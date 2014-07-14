@@ -39,13 +39,15 @@ CC:=gcc
 .phony: all clean
 #
 SRC=fauxcon.c
-EXECS=fauxcon
+EXEC=fauxcon
 #
-all: $(EXECS)
+all: $(EXEC)
 
-%: %.c
+$(EXEC): $(SRC)
 	$(CC) $(CSTDCFLAGS) $(CFLAGS) $(EXTFLAGS) $(LDFLAGS) -c $< -o $@.o $(LIBS)
 	$(CC) $(CSTDCFLAGS) $(CFLAGS) $(EXTFLAGS) $(LDFLAGS) $@.o -o $@ $(LIBS)
+	sudo chown root:root $(EXEC)
+	sudo chmod 4755 $(EXEC)
 
 clean:
-	rm -f *.o $(EXECS)
+	rm -f *.o $(EXEC)
