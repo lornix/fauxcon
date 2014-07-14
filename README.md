@@ -36,16 +36,18 @@ your user to that group.  (TODO: Perhaps to be added later)
 
 By default, to __EXIT__ `fauxcon`, you'll need to type a specific 3 character sequence, since
 we're emulating a full keyboard, you need to be able to type anything and everything.  I've chosen
-a sequence similar to `SSH`'s  -e _escape_ character, default of '%'.  (Can't be the same, as I envision
-using this over `ssh` connections too.  You'll need to type \<ENTER\>, then the _ESCAPE CHAR_,
-then a period ('.').  Hopefully not too many '\<CR\>%.' sequences occur in the wild.
+a sequence similar to `SSH`'s _escape_ character, defaulting to '%'.  (Can't be the same, as
+I envision using this over `ssh` connections too.)  You'll need to type \<ENTER\>, then the
+_ESCAPE CHAR_, then a period ('.').  Hopefully not too many '\<CR\>%.' sequences occur in the
+wild.
 
-TODO: Mouse passthrough. Quirky, since I'd really have to grab and constrain the mouse locally,
+__TODO:__ Mouse passthrough. Quirky, since I'd really have to grab and constrain the mouse locally,
 while transmitting all the motions and clicks. ('remote mode'? see below)  Probably best to make
 mouse passthrough __NOT__ enabled by default, since anyone trying out `fauxcon` without reading
 the man page would suddenly have no working mouse, making it considerably more difficult to
 frantically kill `fauxcon` to restore their keyboard. (Nah, that wouldn't happen, would it?)
 
-TODO: Viability of a 'remote' connection method? Run `fauxcon` locally, it connects to another
+__TODO:__ Viability of a 'remote' connection method? Run `fauxcon` locally, it connects to another
 machine and passes keystrokes through.  Perhaps like `rsync` does, essentially connecting to
 itself to do work. (would make constraining mouse easier, see previous TODO)
+
