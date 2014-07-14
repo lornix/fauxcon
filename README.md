@@ -32,7 +32,7 @@ Another possibility, set the `setuid` bit on `fauxcon`:
     sudo chmod 4755 fauxcon         # -or- u=rwxs,g=rx,o=rx
 
 You _could_ edit the `udev` rules to allow someone in a particular group to have access, then add
-your user to that group.  (TODO: Perhaps to be added later)
+your user to that group.  (__TODO:__ udev instructions. Perhaps to be added later)
 
 By default, to __EXIT__ `fauxcon`, you'll need to type a specific 3 character sequence, since
 we're emulating a full keyboard, you need to be able to type anything and everything.  I've chosen
@@ -47,7 +47,8 @@ mouse passthrough __NOT__ enabled by default, since anyone trying out `fauxcon` 
 the man page would suddenly have no working mouse, making it considerably more difficult to
 frantically kill `fauxcon` to restore their keyboard. (Nah, that wouldn't happen, would it?)
 
-__TODO:__ Viability of a 'remote' connection method? Run `fauxcon` locally, it connects to another
-machine and passes keystrokes through.  Perhaps like `rsync` does, essentially connecting to
-itself to do work. (would make constraining mouse easier, see previous TODO)
+__TODO:__ Remote mode. Viability of a 'remote' connection method? Run `fauxcon` locally, it
+connects to another machine and passes keystrokes through.  Perhaps like `rsync` does, essentially
+connecting to itself to do work. (would make constraining mouse easier, see 'mouse passthrough'
+TODO above)
 
