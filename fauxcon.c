@@ -10,6 +10,13 @@
 #include <linux/uinput.h>
 #include <error.h>
 #include <errno.h>
+#include <assert.h>
+
+/*
+ * not needed, since <linux/uinput.h> includes it already
+ * but makes it easy to 'gf' it to view in vim
+ * #include <linux/input.h>
+ */
 
 void send_event(int ufile,int type,int code,int value)
 {
@@ -17,56 +24,73 @@ void send_event(int ufile,int type,int code,int value)
     struct input_event event;
     memset(&event, 0, sizeof(event));
     gettimeofday(&event.time, NULL);
-    event.type = type;
-    event.code = code;
+    event.type  = type;
+    event.code  = code;
     event.value = value;
     write(ufile, &event, sizeof(event));
-    /* usleep(10); */
     // synch
     memset(&event, 0, sizeof(event));
     gettimeofday(&event.time, NULL);
-    event.type = EV_SYN;
-    event.code = SYN_REPORT;
+    event.type  = EV_SYN;
+    event.code  = SYN_REPORT;
     event.value = 0;
     write(ufile, &event, sizeof(event));
-    /* usleep(10); */
 }
 
-void sendkey(int ufile,int val1)
+void sendchar(int ufile,int val1)
 {
-#define SHIFT 0x400
+#define USHIFT 0x1000
+#define UCTRL  0x2000
     static short keycode[]=
     {
-        /*00*/ KEY_RESERVED,0,0,0,0,0,0,0,
-        /*08*/ KEY_BACKSPACE,KEY_TAB,0,0,0,KEY_ENTER,0,0,
-        /*10*/ 0,0,0,0,0,0,0,0,
-        /*18*/ 0,0,0,KEY_ESC,0,0,0,0,
-        /*20  !"#$%&' */ KEY_SPACE,KEY_1|SHIFT,KEY_APOSTROPHE|SHIFT,KEY_3|SHIFT,KEY_4|SHIFT,KEY_5|SHIFT,KEY_7|SHIFT,KEY_APOSTROPHE,
-        /*28 ()*+,-./ */ KEY_9|SHIFT,KEY_0|SHIFT,KEY_8|SHIFT,KEY_EQUAL|SHIFT,KEY_COMMA,KEY_MINUS,KEY_DOT,KEY_SLASH,
+        /*00 @ABCDEFG */ KEY_2|USHIFT|UCTRL,KEY_A|UCTRL,KEY_B|UCTRL,KEY_C|UCTRL,KEY_D|UCTRL,KEY_E|UCTRL,KEY_F|UCTRL,KEY_G|UCTRL,
+        /*08 HIJKLMNO */ KEY_BACKSPACE,KEY_TAB,KEY_ENTER,KEY_K|UCTRL,KEY_L|UCTRL,KEY_ENTER,KEY_N|UCTRL,KEY_O|UCTRL,
+        /*10 PQRSTUVW */ KEY_P|UCTRL,KEY_Q|UCTRL,KEY_R|UCTRL,KEY_S|UCTRL,KEY_T|UCTRL,KEY_U|UCTRL,KEY_V|UCTRL,KEY_W|UCTRL,
+        /*18 XYZ..... */ KEY_X|UCTRL,KEY_Y|UCTRL,KEY_Z|UCTRL,KEY_ESC,0,0,0,0,
+        /*20  !"#$%&' */ KEY_SPACE,KEY_1|USHIFT,KEY_APOSTROPHE|USHIFT,KEY_3|USHIFT,KEY_4|USHIFT,KEY_5|USHIFT,KEY_7|USHIFT,KEY_APOSTROPHE,
+        /*28 ()*+,-./ */ KEY_9|USHIFT,KEY_0|USHIFT,KEY_8|USHIFT,KEY_EQUAL|USHIFT,KEY_COMMA,KEY_MINUS,KEY_DOT,KEY_SLASH,
         /*30 01234567 */ KEY_0,KEY_1,KEY_2,KEY_3,KEY_4,KEY_5,KEY_6,KEY_7,
-        /*38 89:;<=>? */ KEY_8,KEY_9,KEY_SEMICOLON|SHIFT,KEY_SEMICOLON,KEY_COMMA|SHIFT,KEY_EQUAL,KEY_DOT|SHIFT,KEY_SLASH|SHIFT,
-        /*40 @ABCDEFG */ KEY_2|SHIFT,KEY_A|SHIFT,KEY_B|SHIFT,KEY_C|SHIFT,KEY_D|SHIFT,KEY_E|SHIFT,KEY_F|SHIFT,KEY_G|SHIFT,
-        /*48 HIJKLMNO */ KEY_H|SHIFT,KEY_I|SHIFT,KEY_J|SHIFT,KEY_K|SHIFT,KEY_L|SHIFT,KEY_M|SHIFT,KEY_N|SHIFT,KEY_O|SHIFT,
-        /*50 PQRSTUVW */ KEY_P|SHIFT,KEY_Q|SHIFT,KEY_R|SHIFT,KEY_S|SHIFT,KEY_T|SHIFT,KEY_U|SHIFT,KEY_V|SHIFT,KEY_W|SHIFT,
-        /*58 XYZ[\]^_ */ KEY_X|SHIFT,KEY_Y|SHIFT,KEY_Z|SHIFT,KEY_LEFTBRACE,KEY_BACKSLASH,KEY_RIGHTBRACE,KEY_6|SHIFT,KEY_MINUS|SHIFT,
+        /*38 89:;<=>? */ KEY_8,KEY_9,KEY_SEMICOLON|USHIFT,KEY_SEMICOLON,KEY_COMMA|USHIFT,KEY_EQUAL,KEY_DOT|USHIFT,KEY_SLASH|USHIFT,
+        /*40 @ABCDEFG */ KEY_2|USHIFT,KEY_A|USHIFT,KEY_B|USHIFT,KEY_C|USHIFT,KEY_D|USHIFT,KEY_E|USHIFT,KEY_F|USHIFT,KEY_G|USHIFT,
+        /*48 HIJKLMNO */ KEY_H|USHIFT,KEY_I|USHIFT,KEY_J|USHIFT,KEY_K|USHIFT,KEY_L|USHIFT,KEY_M|USHIFT,KEY_N|USHIFT,KEY_O|USHIFT,
+        /*50 PQRSTUVW */ KEY_P|USHIFT,KEY_Q|USHIFT,KEY_R|USHIFT,KEY_S|USHIFT,KEY_T|USHIFT,KEY_U|USHIFT,KEY_V|USHIFT,KEY_W|USHIFT,
+        /*58 XYZ[\]^_ */ KEY_X|USHIFT,KEY_Y|USHIFT,KEY_Z|USHIFT,KEY_LEFTBRACE,KEY_BACKSLASH,KEY_RIGHTBRACE,KEY_6|USHIFT,KEY_MINUS|USHIFT,
         /*60 `abcdefg */ KEY_GRAVE,KEY_A,KEY_B,KEY_C,KEY_D,KEY_E,KEY_F,KEY_G,
         /*68 hijklmno */ KEY_H,KEY_I,KEY_J,KEY_K,KEY_L,KEY_M,KEY_N,KEY_O,
         /*70 pqrstuvw */ KEY_P,KEY_Q,KEY_R,KEY_S,KEY_T,KEY_U,KEY_V,KEY_W,
-        /*78 xyz{|}~  */ KEY_X,KEY_Y,KEY_Z,KEY_LEFTBRACE|SHIFT,KEY_BACKSLASH|SHIFT,KEY_RIGHTBRACE|SHIFT,KEY_GRAVE|SHIFT,KEY_UNKNOWN
+        /*78 xyz{|}~  */ KEY_X,KEY_Y,KEY_Z,KEY_LEFTBRACE|USHIFT,KEY_BACKSLASH|USHIFT,KEY_RIGHTBRACE|USHIFT,KEY_GRAVE|USHIFT,KEY_UNKNOWN
     };
-    int shifted=keycode[val1]|SHIFT;
-    int key=keycode[val1]&(~SHIFT);
-    // if SHIFT, press SHIFT
-    if (shifted) {
+
+    /* verify alignment of array */
+    assert(keycode[' ']==(KEY_SPACE));
+    assert(keycode['A']==(KEY_A|USHIFT));
+    assert(keycode['a']==(KEY_A));
+    assert(keycode['~']==(KEY_GRAVE|USHIFT));
+
+    int need_shift=keycode[val1]&USHIFT;
+    int need_ctrl=keycode[val1]&UCTRL;
+    int key=keycode[val1]&(0xfff);
+
+    // if modifier needed, hold it down
+    if (need_ctrl) {
+        send_event(ufile,EV_KEY,KEY_LEFTCTRL,1);
+    }
+    if (need_shift) {
         send_event(ufile,EV_KEY,KEY_LEFTSHIFT,1);
     }
     // press key
     send_event(ufile,EV_KEY,key,1);
     // release key
     send_event(ufile,EV_KEY,key,0);
-    // now unpress it
-    if (shifted) {
+    // now release the modifiers
+    if (need_shift) {
         send_event(ufile,EV_KEY,KEY_LEFTSHIFT,0);
+    }
+    if (need_ctrl) {
+        send_event(ufile,EV_KEY,KEY_LEFTCTRL,0);
+    }
+    if (key==KEY_ENTER) {
+        usleep(250000);
     }
 }
 
@@ -75,7 +99,7 @@ int create_uinput()
     /* Attempt to open uinput to create new device */
     int ufile = open("/dev/uinput", O_WRONLY | O_NDELAY );
     if (ufile<0) {
-        error(1,errno,"Could not open uinput. (Permissions?)");
+        error(1,errno,"Could not open uinput device");
     }
 
     /* structure with name and other info */
@@ -83,8 +107,9 @@ int create_uinput()
     memset(&uinp, 0, sizeof(uinp));
     strncpy(uinp.name, "Faux Keyboard [TODO: & Mouse]", UINPUT_MAX_NAME_SIZE-1);
     uinp.id.bustype = BUS_USB;
-    uinp.id.vendor  = 0x0d0d;
-    uinp.id.product = 0x0d0d;
+    /* made up values, but didn't find anything using these values */
+    uinp.id.vendor  = 0x9642;
+    uinp.id.product = 0x000d;
     uinp.id.version = 13;
 
     /* we handle EV_KEY & EV_SYN events */
@@ -100,7 +125,7 @@ int create_uinput()
     ssize_t res=write(ufile, &uinp, sizeof(uinp));
     if (res!=sizeof(uinp)) {
         close(ufile);
-        error(2,errno,"Write error: %ld != %ld",res,sizeof(uinp));
+        error(2,errno,"Write error: %d != %d",(signed int)res,(signed int)sizeof(uinp));
     }
     /* magic happens here, honest */
     int retcode = ioctl(ufile, UI_DEV_CREATE);
@@ -124,18 +149,15 @@ int main(void)
     /* set up uinput device */
     int ufile=create_uinput();
 
-    sendkey(ufile,'#');
-    for (int cnt=32; cnt<=127; cnt++) {
-        sendkey(ufile,cnt);
+    char* msg="# msg for pi\n# ";
+    while (*msg!=0) {
+        sendchar(ufile,*msg);
+        msg++;
     }
-    // press key
-    send_event(ufile,EV_KEY,KEY_ENTER,1);
-    // release key
-    send_event(ufile,EV_KEY,KEY_ENTER,0);
-    // press key
-    send_event(ufile,EV_KEY,KEY_ENTER,1);
-    // release key
-    send_event(ufile,EV_KEY,KEY_ENTER,0);
+    for (int i=32; i<127; i++) {
+        sendchar(ufile,i);
+    }
+    sendchar(ufile,'\n');
 
     /* remove everything */
     destroy_uinput(ufile);
