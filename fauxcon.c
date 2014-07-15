@@ -156,7 +156,7 @@ int create_uinput()
     uinp.id.bustype = BUS_USB;
     /* made up values, but didn't find anything using these values */
     uinp.id.vendor  = 0x9642;
-    uinp.id.product = 0x000d;
+    uinp.id.product = 0x0d0d;
     uinp.id.version = 13;
 
     /* we handle EV_SVN, EV_KEY & EV_REP events */
