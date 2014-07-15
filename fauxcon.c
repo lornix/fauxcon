@@ -225,7 +225,6 @@ int main(void)
         }
         int pchr=(chr<32)?32:chr;
         printf("chr=%3d '%c'\n",chr,pchr);
-
     }
 
     /* set input to 'normal' mode */
