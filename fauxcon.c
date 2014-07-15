@@ -14,6 +14,7 @@
 #include <termios.h>
 #include <sys/kd.h>
 #include <sys/ioctl.h>
+#include <sys/select.h>
 
 /*
  * not needed, since <linux/uinput.h> includes it already
@@ -21,9 +22,12 @@
  * #include <linux/input.h>
  */
 
+static char escape_char=0;
+static int ufile=0;
+
 typedef enum { KBD_MODE_RAW, KBD_MODE_NORMAL } kbd_mode;
 
-void set_keyboard(kbd_mode kmode)
+static void set_keyboard(kbd_mode kmode)
 {
     /* storage for old keyboard mode */
     static struct termios tty_attr_saved;
@@ -61,7 +65,7 @@ void set_keyboard(kbd_mode kmode)
     }
 }
 
-void send_event(int ufile, int type, int code, int value)
+static void send_event(int type, int code, int value)
 {
     /* build structure and populate */
     struct input_event event;
@@ -86,7 +90,7 @@ void send_event(int ufile, int type, int code, int value)
     }
 }
 
-void sendchar(int ufile, int val1)
+static void sendchar(int val1)
 {
 #define USHIFT 0x1000
 #define UCTRL  0x2000
@@ -123,28 +127,28 @@ void sendchar(int ufile, int val1)
 
     // if modifier needed, hold it down
     if (need_ctrl) {
-        send_event(ufile, EV_KEY, KEY_LEFTCTRL, 1);
+        send_event(EV_KEY, KEY_LEFTCTRL, 1);
     }
     if (need_shift) {
-        send_event(ufile, EV_KEY, KEY_LEFTSHIFT, 1);
+        send_event(EV_KEY, KEY_LEFTSHIFT, 1);
     }
     // press key
-    send_event(ufile, EV_KEY, key, 1);
+    send_event(EV_KEY, key, 1);
     // release key
-    send_event(ufile, EV_KEY, key, 0);
+    send_event(EV_KEY, key, 0);
     // now release the modifiers
     if (need_shift) {
-        send_event(ufile, EV_KEY, KEY_LEFTSHIFT, 0);
+        send_event(EV_KEY, KEY_LEFTSHIFT, 0);
     }
     if (need_ctrl) {
-        send_event(ufile, EV_KEY, KEY_LEFTCTRL, 0);
+        send_event(EV_KEY, KEY_LEFTCTRL, 0);
     }
 }
 
-int create_uinput()
+static void create_uinput()
 {
     /* Attempt to open uinput to create new device */
-    int ufile = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
+    ufile = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
     if (ufile<0) {
         error(1, errno, "Could not open uinput device");
     }
@@ -174,64 +178,89 @@ int create_uinput()
     if (res!=sizeof(uinp)) {
         close(ufile);
         error(2, errno, "Write error: %d != %d", (signed int)res, (signed int)sizeof(uinp));
+        /* does not return */
     }
     /* magic happens here, honest */
     int retcode = ioctl(ufile, UI_DEV_CREATE);
     if (retcode!=0) {
         close(ufile);
         error(2, errno, "Ioctl error: %d", retcode);
+        /* does not return */
     }
-    /* ufile is our link to uinput device */
-    return ufile;
 }
 
-void destroy_uinput(int ufile)
+static void destroy_uinput(void)
 {
     /* skip checking retval, not concerned */
     ioctl(ufile, UI_DEV_DESTROY);
     close(ufile);
 }
 
-int main(void)
+static void main_run(void)
 {
     /* set up uinput device */
-    int ufile=create_uinput();
+    create_uinput();
 
     /* set input to nonblocking/raw mode */
     set_keyboard(KBD_MODE_RAW);
 
-    /* specify valid escape string <CR>%. */
-    const char* escape_string="\015%.";
+    /* state machine to find escape sequence */
+    int escape_sequence_state=0;
 
-    /* hold last 3 previous keystrokes
-     * (plus trailing zero to cmp with escape_string)
-     */
-    char prevchr[4]={0, 0, 0, 0};
-    int chr;
+    /* build fd_set for select */
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    /* listen for stdin */
+    FD_SET(0,&readfds);
 
     while (1) {
-        chr=getchar();
+        int sel=select(1,&readfds,NULL,NULL,NULL);
+        if (sel<0) {
+            /* something bad happened */
+            perror("Error during select");
+            break;
+        }
+        if (sel==0) {
+            /* nobody available, try again */
+            /* listen for stdin again, since it was reset */
+            FD_SET(0,&readfds);
+            continue;
+        }
+        int chr=getchar();
         if (chr==EOF) {
             continue;
         }
-        sendchar(ufile, chr);
+        sendchar(chr);
 
-        prevchr[0]=prevchr[1];
-        prevchr[1]=prevchr[2];
-        prevchr[2]=chr;
-
-        if (memcmp(escape_string, prevchr, 3)==0) {
+        switch (escape_sequence_state) {
+            case 2: /* 2 = looking for period */
+                escape_sequence_state=(chr=='.')?3:0;
+                break;
+            case 1: /* 1 = looking for escape_char */
+                escape_sequence_state=(chr==escape_char)?2:0;
+                break;
+            default: /* 0 = looking for CR */
+                escape_sequence_state=(chr==13)?1:0;
+                break;
+        }
+        if (escape_sequence_state==3) {
             break;
         }
-        int pchr=(chr<32)?32:chr;
-        printf("chr=%3d '%c'\n",chr,pchr);
     }
 
     /* set input to 'normal' mode */
     set_keyboard(KBD_MODE_NORMAL);
 
     /* remove everything */
-    destroy_uinput(ufile);
+    destroy_uinput();
+}
+
+int main(int argc, char* argv[])
+{
+    escape_char='%';
+
+    printf("Reminder: Escape sequence is <CR> %c .\n",escape_char);
+    main_run();
 
     return 0;
 }
