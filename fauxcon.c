@@ -397,7 +397,8 @@ int main(int argc, char* argv[])
     free_mem(optstring,longopts);
 
     printf("Reminder: Escape sequence is <CR> %c .\n",escape_char);
-    /* run(); */
+
+    run();
 
     return 0;
 }
