@@ -1,3 +1,26 @@
+/*
+ * fauxcon - virtual console connection for keyboard and mouse
+ *
+ * A simple utility to allow connecting to the CONSOLE keyboard and
+ * mouse (TODO: add mouse passthrough)
+ *
+ * In its simplest mode, it takes raw ASCII from keyboard and converts this
+ * to the appropriate keyboard scancodes, stuffed into keyboard queue of
+ * current system.  When you're logged in via SSH, this feeds keys into the
+ * input queue.  Very handy.
+ *
+ * ------IDEAS-------
+ * TODO: (-m) mouse support + option to enable (not enabled by default)
+ *            This likely only possible with (-r) remote mode. Involves
+ *            grabbing events for mouse/kb to pass along.
+ * TODO: (-r) remote mode. Like how rsync does it, connect to remote system,
+ *            talk to itself on that machine, connect and begin passing
+ *            kb/mouse events.
+ *
+ * <lornix@lornix.com> 2014-06-15
+ *
+ */
+
 #define _BSD_SOURCE
 
 #include <stdio.h>
@@ -15,37 +38,51 @@
 #include <sys/kd.h>
 #include <sys/ioctl.h>
 #include <sys/select.h>
+#include <getopt.h>
 
-/*
- * not needed, since <linux/uinput.h> includes it already
- * but makes it easy to 'gf' it to view in vim
- * #include <linux/input.h>
- */
+/* #include <linux/input.h>                               */
+/* not needed, since <linux/uinput.h> includes it already */
+/* but makes it easy to 'gf' it to view in Vim            */
 
-static char escape_char=0;
+/* GLOBALS!                                                               */
+/* Argh! Dislike global variables, but there are a few values we need to  */
+/* pass around. Could put in a structure, but we'd still need to pass it. */
+/* No win either way.  Globals makes things cleaner at least.             */
+
+/* what is the default escape character? */
+#define ESCAPE_CHAR_DEFAULT "%"
+/* escape_char - what character is the escape char? Can't leave without it! */
+static char escape_char='%';
+/* file descriptor to write to uinput device */
 static int ufile=0;
 
+/* a nice enum to document what mode we want KB to end up */
 typedef enum { KBD_MODE_RAW, KBD_MODE_NORMAL } kbd_mode;
+/* perhaps a better way to build getopts/getopts_long structure ONCE */
+typedef struct {
+    const char* shortname;
+    const char* longname;
+    int has_arg;
+    const char* description;
+} progoptions;
 
+/* Do processing to set KB to raw or cooked mode. */
+/* Saves old state to restore later.              */
 static void set_keyboard(kbd_mode kmode)
 {
     /* storage for old keyboard mode */
     static struct termios tty_attr_saved;
     static int keyboard_mode_saved;
 
-
     if (kmode==KBD_MODE_NORMAL) {
-
         /* restore tty attributes */
         tcsetattr(0, TCSAFLUSH, &tty_attr_saved);
         /* restore keyboard mode */
         ioctl(0, KDSKBMODE, keyboard_mode_saved);
 
     } else if (kmode==KBD_MODE_RAW) {
-
         /* save keyboard mode */
         ioctl(0, KDGKBMODE, &keyboard_mode_saved);
-
         /* save tty attributes */
         tcgetattr(0, &tty_attr_saved);
 
@@ -60,16 +97,17 @@ static void set_keyboard(kbd_mode kmode)
         tty_attr.c_lflag&=~(ICANON|ECHO|ISIG);
         tty_attr.c_iflag&=~(ISTRIP|INLCR|ICRNL|IGNCR|IXON|IXOFF);
         tcsetattr(0, TCSANOW, &tty_attr);
+
         /* set keyboard to raw mode */
         ioctl(0, KDSKBMODE, K_RAW);
     }
 }
 
+/* send an event to uinput */
 static void send_event(int type, int code, int value)
 {
     /* build structure and populate */
     struct input_event event;
-
     gettimeofday(&event.time, NULL);
     event.type  = type;
     event.code  = code;
@@ -80,20 +118,26 @@ static void send_event(int type, int code, int value)
     if (result!=sizeof(event)) {
         error(1, errno, "Error during event write");
     }
-    // sync, reuse previous event structure
+
+    /* send sync event, reusing previous event structure */
     event.type  = EV_SYN;
     event.code  = SYN_REPORT;
     event.value = 0;
+
     result=write(ufile, &event, sizeof(event));
     if (result!=sizeof(event)) {
         error(1, errno, "Error during event sync");
     }
 }
 
+/* convert an ASCII character we typed into a useful scancode for uinput */
 static void sendchar(int val1)
 {
+    /* need to press SHIFT for this key */
 #define USHIFT 0x1000
+    /* need to press CTRL for this key */
 #define UCTRL  0x2000
+    /* 1:1 lookup table.  128 entries, ASC('A')=65=KEY_A|USHIFT */
     static short keycode[]=
     {
         /*00 @ABCDEFG */ KEY_2|USHIFT|UCTRL, KEY_A|UCTRL, KEY_B|UCTRL, KEY_C|UCTRL, KEY_D|UCTRL, KEY_E|UCTRL, KEY_F|UCTRL, KEY_G|UCTRL,
@@ -114,29 +158,31 @@ static void sendchar(int val1)
         /*78 xyz{|}~  */ KEY_X, KEY_Y, KEY_Z, KEY_LEFTBRACE|USHIFT, KEY_BACKSLASH|USHIFT, KEY_RIGHTBRACE|USHIFT, KEY_GRAVE|USHIFT, KEY_BACKSPACE
     };
 
-    /* verify alignment of array */
+    /* verify alignment of array                                   */
+    /* just a spot check to make sure everything lines up properly */
     assert(keycode[' ']==(KEY_SPACE));
     assert(keycode['A']==(KEY_A|USHIFT));
     assert(keycode['a']==(KEY_A));
     assert(keycode['~']==(KEY_GRAVE|USHIFT));
-    assert(sizeof(keycode)==256);
+    assert((sizeof(keycode)/sizeof(keycode[0]))==128);
 
+    /* parse key, grabbing SHIFT & CTRL requirements */
     int need_shift=keycode[val1]&USHIFT;
     int need_ctrl=keycode[val1]&UCTRL;
     int key=keycode[val1]&(0xfff);
 
-    // if modifier needed, hold it down
+    /* if modifier needed, hold it down */
     if (need_ctrl) {
         send_event(EV_KEY, KEY_LEFTCTRL, 1);
     }
     if (need_shift) {
         send_event(EV_KEY, KEY_LEFTSHIFT, 1);
     }
-    // press key
+    /* press key */
     send_event(EV_KEY, key, 1);
-    // release key
+    /* release key */
     send_event(EV_KEY, key, 0);
-    // now release the modifiers
+    /* now release the modifiers */
     if (need_shift) {
         send_event(EV_KEY, KEY_LEFTSHIFT, 0);
     }
@@ -145,6 +191,7 @@ static void sendchar(int val1)
     }
 }
 
+/* perform initial setup to create uinput device */
 static void create_uinput()
 {
     /* Attempt to open uinput to create new device */
@@ -189,14 +236,17 @@ static void create_uinput()
     }
 }
 
+/* tear down uinput device and close file descriptor */
 static void destroy_uinput(void)
 {
     /* skip checking retval, not concerned */
     ioctl(ufile, UI_DEV_DESTROY);
     close(ufile);
+    /* mark it invalid */
+    ufile=-1;
 }
 
-static void main_run(void)
+static void run(void)
 {
     /* set up uinput device */
     create_uinput();
@@ -226,12 +276,16 @@ static void main_run(void)
             FD_SET(0,&readfds);
             continue;
         }
+        /* supposed to be a character ready */
         int chr=getchar();
+        /* shouldn't happen... but... */
         if (chr==EOF) {
             continue;
         }
+        /* send typed character to uinput device */
         sendchar(chr);
 
+        /* state machine to handle escape code */
         switch (escape_sequence_state) {
             case 2: /* 2 = looking for period */
                 escape_sequence_state=(chr=='.')?3:0;
@@ -255,12 +309,66 @@ static void main_run(void)
     destroy_uinput();
 }
 
+/* create proper getopt_long parameters from our struct */
+static void build_opts_objects(
+        progoptions* poptions,
+        char** optstring,
+        struct option** longopts)
+{
+    int index=0;
+    int strlen=0;
+    *optstring=NULL;
+    longopts=NULL;
+    /* while we aren't at the all zeros last entry */
+    while (poptions[index].shortname!=0) {
+        /* resize the string, add up to 3 chars (option+2:'s max)*/
+        (*optstring)=realloc((*optstring),strlen+poptions[index].has_arg+2);
+        /* grab first character of shortname string */
+        (*optstring)[strlen]=poptions[index].shortname[0];
+        strlen++;
+        if (poptions[index].has_arg>1) {
+            (*optstring)[strlen]=':';
+            strlen++;
+        }
+        if (poptions[index].has_arg>0) {
+            (*optstring)[strlen]=':';
+            strlen++;
+        }
+        /* fill end-of-string zero */
+        (*optstring)[strlen]=0;
+        index++;
+    }
+}
+
 int main(int argc, char* argv[])
 {
-    escape_char='%';
+    const char* description=
+        "Connect your keyboard to system's CONSOLE kb & mouse.  If nothing "
+        "specified, connect keyboard to CONSOLE.";
+    progoptions poptions[]=
+    {
+        /* short, long, has_arg, description */
+        { "h", "help",    0,  "Show Help"                                   },
+        { "v", "verbose", 0,  "Verbose operation"                           },
+        { "V", "version", 0,  "Show version information"                    },
+        { "d", "delaycr", 1,  "Delay (ms) after every CR/LR character"      },
+        { "D", "delay",   1,  "Delay (ms) after every character"            },
+        { "f", "file",    1,  "Send contents of file (and exit)"            },
+        { "s", "string",  1,  "Send string (and exit)"                      },
+        { "S", "stay",    0,  "Stay connected after sending file or string" },
+        { "e", "escape",  1,  "Specify Escape Character - Default (" ESCAPE_CHAR_DEFAULT ")" },
+        { 0,0,0,0}
+    };
+
+    /* to be filled in */
+    char* optstring=NULL;
+    struct option** longopts=NULL;
+    /* create proper optstring & longopts from single poptions array */
+    build_opts_objects(poptions,&optstring,longopts);
+    printf("optstring='%s'\n",optstring);
 
     printf("Reminder: Escape sequence is <CR> %c .\n",escape_char);
-    main_run();
+    run();
 
     return 0;
 }
