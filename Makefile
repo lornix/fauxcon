@@ -46,8 +46,8 @@ all: $(EXEC)
 $(EXEC): $(SRC)
 	$(CC) $(CSTDCFLAGS) $(CFLAGS) $(EXTFLAGS) $(LDFLAGS) -c $< -o $@.o $(LIBS)
 	$(CC) $(CSTDCFLAGS) $(CFLAGS) $(EXTFLAGS) $(LDFLAGS) $@.o -o $@ $(LIBS)
-	sudo chown root:root $(EXEC)
-	sudo chmod 4755 $(EXEC)
+	#sudo chown root:root $(EXEC)
+	#sudo chmod 4755 $(EXEC)
 
 clean:
 	rm -f *.o $(EXEC)

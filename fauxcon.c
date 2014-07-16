@@ -313,31 +313,58 @@ static void run(void)
 static void build_opts_objects(
         progoptions* poptions,
         char** optstring,
-        struct option** longopts)
+        struct option*** longopts)
 {
     int index=0;
     int strlen=0;
-    *optstring=NULL;
-    longopts=NULL;
+    char* ostr=NULL;
+    struct option** lopts=NULL;
     /* while we aren't at the all zeros last entry */
     while (poptions[index].shortname!=0) {
         /* resize the string, add up to 3 chars (option+2:'s max)*/
-        (*optstring)=realloc((*optstring),strlen+poptions[index].has_arg+2);
+        ostr=realloc(ostr,strlen+poptions[index].has_arg+2);
         /* grab first character of shortname string */
-        (*optstring)[strlen]=poptions[index].shortname[0];
+        ostr[strlen]=poptions[index].shortname[0];
         strlen++;
         if (poptions[index].has_arg>1) {
-            (*optstring)[strlen]=':';
+            ostr[strlen]=':';
             strlen++;
         }
         if (poptions[index].has_arg>0) {
-            (*optstring)[strlen]=':';
+            ostr[strlen]=':';
             strlen++;
         }
         /* fill end-of-string zero */
-        (*optstring)[strlen]=0;
+        ostr[strlen]=0;
+
+        /* resize the option array and fill in new entry */
+        lopts=realloc(lopts,sizeof(struct option*)*(index+1));
+        lopts[index]=calloc(1,sizeof(struct option));
+        (*lopts[index]).name=poptions[index].longname;
+        (*lopts[index]).has_arg=poptions[index].has_arg;
+        (*lopts[index]).val=poptions[index].shortname[0];
+        (*lopts[index]).flag=0;
+
         index++;
     }
+    /* add the zero filled entry at end */
+    lopts=realloc(lopts,sizeof(struct option*)*(index+1));
+    lopts[index]=calloc(1,sizeof(struct option));
+
+    /* give values back to caller */
+    *optstring=ostr;
+    *longopts=lopts;
+}
+static void free_mem(char* optstring, struct option** longopts)
+{
+    free(optstring);
+    int index=0;
+    while (longopts[index]->name!=0) {
+        free(longopts[index]);
+        index++;
+    }
+    free(longopts[index]);
+    free(longopts);
 }
 
 int main(int argc, char* argv[])
@@ -364,11 +391,13 @@ int main(int argc, char* argv[])
     char* optstring=NULL;
     struct option** longopts=NULL;
     /* create proper optstring & longopts from single poptions array */
-    build_opts_objects(poptions,&optstring,longopts);
-    printf("optstring='%s'\n",optstring);
+    build_opts_objects(poptions,&optstring,&longopts);
+
+
+    free_mem(optstring,longopts);
 
     printf("Reminder: Escape sequence is <CR> %c .\n",escape_char);
-    run();
+    /* run(); */
 
     return 0;
 }
