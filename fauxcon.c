@@ -21,8 +21,6 @@
  *
  */
 
-/* #define TESTING */
-
 #define _BSD_SOURCE
 
 #include <stdio.h>
@@ -446,9 +444,7 @@ int main(int argc, char* argv[])
 
     printf("Reminder: Escape sequence is '<CR> %c .'\n",escape_char);
 
-#ifndef TESTING
     run();
-#endif
 
     return 0;
 }

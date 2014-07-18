@@ -46,6 +46,7 @@ all: $(EXEC)
 $(EXEC): $(SRC)
 	$(CC) $(CSTDCFLAGS) $(CFLAGS) $(EXTFLAGS) $(LDFLAGS) -c $< -o $@.o $(LIBS)
 	$(CC) $(CSTDCFLAGS) $(CFLAGS) $(EXTFLAGS) $(LDFLAGS) $@.o -o $@ $(LIBS)
+	# perhaps enable later
 	#sudo chown root:root $(EXEC)
 	#sudo chmod 4755 $(EXEC)
 
