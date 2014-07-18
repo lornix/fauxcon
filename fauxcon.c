@@ -22,6 +22,7 @@
  */
 
 #define _BSD_SOURCE
+#define _GNU_SOURCE
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,6 +57,12 @@
 #define Q(x) QQ(x)
 #define QQ(x) #x
 
+/* REQ - denotes a non-optional argument in option list */
+#define REQ 0x100
+
+/* arbitrary line length limit, prevents wrap on typical display */
+static const int MAX_LINE_LENGTH=70;
+
 /* escape_char - what character is the escape char? Can't leave without it! */
 static char escape_char=ESCAPE_CHAR_DEFAULT;
 
@@ -67,7 +74,7 @@ typedef enum { KBD_MODE_RAW, KBD_MODE_NORMAL } kbd_mode;
 
 /* perhaps a better way to build getopts/getopts_long structure ONCE */
 typedef struct {
-    const char* shortname;
+    const int shortchar;
     const char* longname;
     int has_arg;
     const char* description;
@@ -242,6 +249,7 @@ static void create_uinput()
         error(2, errno, "Write error: %d (actual) != %d (expected)", (signed int)res, (signed int)sizeof(uinp));
         /* does not return */
     }
+
     /* magic happens here, honest */
     int retcode = ioctl(ufile, UI_DEV_CREATE);
     if (retcode!=0) {
@@ -331,7 +339,7 @@ static void build_opts_objects(
         char** optstring,
         struct option*** longopts)
 {
-    /* which poption value are we parsing? */
+    /* which poptions value are we parsing? */
     int index=0;
     /* which longoption index are we filling? */
     int longindex=0;
@@ -343,16 +351,16 @@ static void build_opts_objects(
     struct option** lopts=NULL;
 
     /* while we aren't at the all-zeros last entry */
-    while ((poptions[index].shortname!=0)||(poptions[index].longname!=0)) {
+    while ((poptions[index].shortchar!=0)||(poptions[index].longname!=0)) {
 
         /* if entry has a short name value */
-        if (poptions[index].shortname!=0) {
+        if (poptions[index].shortchar!=0) {
 
             /* resize the string, add up to 3 chars (option+2:'s max)*/
             ostr=realloc(ostr,len+poptions[index].has_arg+2);
 
-            /* grab first character of shortname string */
-            ostr[len]=poptions[index].shortname[0];
+            /* grab character in shortchar (mask off the REQ flag) */
+            ostr[len]=poptions[index].shortchar&(~REQ);
             len++;
 
             /* arguments? Type 1 = required (1 colon) */
@@ -380,7 +388,7 @@ static void build_opts_objects(
 
             (*lopts[longindex]).name=poptions[index].longname;
             (*lopts[longindex]).has_arg=poptions[index].has_arg;
-            (*lopts[longindex]).val=poptions[index].shortname[0];
+            (*lopts[longindex]).val=poptions[index].shortchar&(~REQ);
             (*lopts[longindex]).flag=0;
 
             longindex++;
@@ -397,6 +405,7 @@ static void build_opts_objects(
     *optstring=ostr;
     *longopts=lopts;
 }
+
 static void free_mem(char* optstring, struct option** longopts)
 {
     /* for each longoption entry, free! */
@@ -414,21 +423,171 @@ static void free_mem(char* optstring, struct option** longopts)
     free(optstring);
 }
 
+static const char* showopt(int shortchar, const char* longname)
+{
+/* sigh.  Of course, someone will create a longname option over 80 chars
+ * long... someday...
+ */
+#define SHOWOPTSTRLEN 80
+
+    static char str[SHOWOPTSTRLEN+1];
+    /* always start with empty string */
+    str[0]=0;
+
+    if (shortchar!=0) {
+        /* fake it */
+        strncat(str,"-x",SHOWOPTSTRLEN);
+        /* and poke in proper value */
+        str[strlen(str)-1]=shortchar&(~REQ);
+    }
+    if ((shortchar!=0)&&(longname!=0)) {
+        strncat(str,"|",SHOWOPTSTRLEN);
+    }
+    if (longname!=0) {
+        strncat(str,"--",SHOWOPTSTRLEN);
+        strncat(str,longname,SHOWOPTSTRLEN);
+    }
+    /* statically allocated, will be overwritten each call */
+    return str;
+}
+
+static const char* showarg(int has_arg)
+{
+#define SHOWARGSTRLEN 6
+
+    static char str[SHOWARGSTRLEN+1]={0};
+    /* always start with empty string */
+    str[0]=0;
+
+    if (has_arg>0) {
+        strncat(str," ",SHOWARGSTRLEN);
+
+        /* optional argument? has_arg==2 */
+        if (has_arg>1) {
+            strncat(str,"[",SHOWARGSTRLEN);
+        }
+
+        strncat(str,"arg",SHOWARGSTRLEN);
+
+        if (has_arg>1) {
+            strncat(str,"]",SHOWARGSTRLEN);
+        }
+    }
+    /* statically allocated, will be overwritten each call */
+    return str;
+}
+
+static void usage(char* arg0, progoptions poptions[])
+{
+    printf("\n");
+
+    char* bname=basename(arg0);
+
+    int line_len=printf("%s",bname);
+
+    int max_opt_len=0;
+
+    /* show initial line/layout for options with command name */
+    int index=0;
+    while ((poptions[index].shortchar!=0)||(poptions[index].longname!=0)) {
+        int opt_len=0;
+        int len=0;
+
+        line_len+=printf(" ");
+
+        /* optional option? -or- not required... */
+        if ((poptions[index].shortchar&REQ)==0) {
+            line_len+=printf("[");
+        }
+
+        /* show the formatted option pair -x/--xxxx */
+        len=printf("%s",showopt(poptions[index].shortchar&(~REQ),poptions[index].longname));
+        line_len+=len;
+        opt_len+=len;
+
+        /* does this option have an argument? */
+        if (poptions[index].has_arg>0) {
+            /* show argument, optionally marked as optional */
+            len=printf("%s",showarg(poptions[index].has_arg));
+            line_len+=len;
+            opt_len+=len;
+        }
+        line_len+=printf(" ");
+
+        if ((poptions[index].shortchar&REQ)==0) {
+            line_len+=printf("]");
+        }
+
+        /* arbitrary line length limit, prevents wrap on typical display */
+        if (line_len>=MAX_LINE_LENGTH) {
+            /* retrieve length of arg0 (basename) */
+            line_len=strlen(bname);
+            /* pad out to that length */
+            printf("\n%*s",line_len,"");
+        }
+
+        if (opt_len>max_opt_len) {
+            max_opt_len=opt_len;
+        }
+
+        index++;
+    }
+    printf("\n\n");
+
+    /* display the long description stored in the tail of the struct */
+    printf("%s\n",poptions[index].description);
+
+    /* now show options with descriptions */
+    index=0;
+    while ((poptions[index].shortchar!=0)||(poptions[index].longname!=0)) {
+        /* initial padding on line */
+        printf("  ");
+
+        int len=printf("%s",showopt(poptions[index].shortchar&(~REQ),poptions[index].longname));
+
+        if (poptions[index].has_arg>0) {
+            len+=printf("%s",showarg(poptions[index].has_arg));
+        }
+
+        /* figure out current width */
+        len=max_opt_len-len+2;
+
+        /* and pad to make columns line up */
+        printf("%*s",len,"");
+        printf("%s\n",poptions[index].description);
+
+        index++;
+    }
+    printf("\n");
+    exit(EXIT_FAILURE);
+}
+
 int main(int argc, char* argv[])
 {
+
     progoptions poptions[]=
     {
         /* short, long, has_arg, description */
-        { "h", "help",    0,  "Show Help"                                   },
-        { "v", "verbose", 0,  "Verbose operation"                           },
-        { "V", "version", 0,  "Show version information"                    },
-        { "d", "delaycr", 1,  "Delay (ms) after every CR/LR character"      },
-        { "D", "delay",   1,  "Delay (ms) after every character"            },
-        { "f", "file",    1,  "Send contents of file (and exit)"            },
-        { "s", "string",  1,  "Send string (and exit)"                      },
-        { "S", "stay",    0,  "Stay connected after sending file or string" },
-        { "e", "escape",  1,  "Specify Escape Character - Default (" Q(ESCAPE_CHAR_DEFAULT) ")" },
-        { 0,0,0,"Connect your keyboard to system's CONSOLE KB & Mouse."}
+        { 'h',     "help",    0, "Show Help" },
+        { 'v',     "verbose", 0, "Verbose operation" },
+        { 'V',     "version", 0, "Show version information" },
+        { 'd',     "delaycr", 1, "Delay arg (ms) after every CR/LR character" },
+        { 'D',     "delay",   1, "Delay arg (ms) after every character" },
+        { 'f',     "file",    1, "Send contents of file 'arg' (and exit)" },
+        { 's',     "string",  1, "Send string 'arg' (and exit)" },
+        { 'S',     "stay",    0, "Stay connected after sending file or string" },
+        { 'e',     "escape",  1, "Specify Escape Character - Default (" Q(ESCAPE_CHAR_DEFAULT) ")" },
+        { 'c'|REQ, "connect", 0, "Connect to CONSOLE keyboard & mouse (REQUIRED)" },
+        { 0,0,0, /* compiler will concatenate these all together */
+            "Connect your keyboard to system's CONSOLE KB & Mouse.\n"
+            "\n"
+            "The required '-c/--connect' option is to prevent users from getting locked in\n"
+            "without knowing how to exit.  You must always include this option to connect.\n"
+            "\n"
+            "To exit once running, you'll need to type the escape sequence (much like ssh(1)),\n"
+            "by entering '<RETURN> % .', that is, the RETURN key, whatever your escape\n"
+            "character is (default is " Q(ESCAPE_CHAR_DEFAULT) "), and then a period ('.').\n"
+        },
     };
 
     /* to be filled in */
@@ -438,13 +597,16 @@ int main(int argc, char* argv[])
     /* create proper optstring & longopts from single poptions array */
     build_opts_objects(poptions,&optstring,&longopts);
 
-    printf("Optstring: '%s'\n",optstring);
+    /* printf("Optstring: '%s'\n",optstring); */
 
     free_mem(optstring,longopts);
+
+    usage(argv[0],poptions);
 
     printf("Reminder: Escape sequence is '<CR> %c .'\n",escape_char);
 
     run();
 
-    return 0;
+    return EXIT_SUCCESS;
 }
+
