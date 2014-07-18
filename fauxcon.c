@@ -16,10 +16,17 @@
  * TODO: (-r) remote mode. Like how rsync does it, connect to remote system,
  *            talk to itself on that machine, connect and begin passing
  *            kb/mouse events.
+ * TODO: (-f/-s) Allow multiple file/string send options, send in order
  *
  * <lornix@lornix.com> 2014-06-15
  *
  */
+
+#ifndef VERSION
+#define VERSION "0.0.1"
+#endif
+
+#define AUTHOR "L Nix <lornix@lornix.com>"
 
 #define _BSD_SOURCE
 #define _GNU_SOURCE
@@ -60,8 +67,14 @@
 /* REQ - denotes a non-optional argument in option list */
 #define REQ 0x100
 
+/* version string shown in multiple places. (consistency!) */
+#define VERSION_STRING "%s v" VERSION " - " AUTHOR "\n",arg0
+
 /* arbitrary line length limit, prevents wrap on typical display */
 static const int MAX_LINE_LENGTH=70;
+
+/* Maximum delaycr/delay value, in milliseconds */
+static const int MAX_DELAY=2000;
 
 /* escape_char - what character is the escape char? Can't leave without it! */
 static char escape_char=ESCAPE_CHAR_DEFAULT;
@@ -481,9 +494,7 @@ static void usage(char* arg0, progoptions poptions[])
 {
     printf("\n");
 
-    char* bname=basename(arg0);
-
-    int line_len=printf("%s",bname);
+    int line_len=printf("%s",arg0);
 
     int max_opt_len=0;
 
@@ -520,8 +531,8 @@ static void usage(char* arg0, progoptions poptions[])
 
         /* arbitrary line length limit, prevents wrap on typical display */
         if (line_len>=MAX_LINE_LENGTH) {
-            /* retrieve length of arg0 (basename) */
-            line_len=strlen(bname);
+            /* retrieve length of arg0 */
+            line_len=strlen(arg0);
             /* pad out to that length */
             printf("\n%*s",line_len,"");
         }
@@ -594,14 +605,156 @@ int main(int argc, char* argv[])
     /* create proper optstring & longoptarray from single poptions array */
     build_opts_objects(poptions,&optstring,&longoptarray);
 
-    getopt_long(argc, argv, optstring, *longoptarray, NULL);
+    /* fetch basename of argv[0] */
+    char* arg0=basename(argv[0]);
+
+    /* preset the defaults for the various flags & settings */
+    int verbose_mode=0;
+    int delaycr=0;
+    int delay=0;
+    char* filename=NULL;
+    char* sendstr=NULL;
+    int stay_connected=0;
+    int connect=0;
+    int escape=ESCAPE_CHAR_DEFAULT;
+    int fileindex=0;
+    int strindex=0;
+
+    /* prevent getopt_long from printing error messages */
+    opterr=0;
+
+    /* start from beginning */
+    optind=1;
+
+    while (1) {
+        int opt=getopt_long(argc, argv, optstring, *longoptarray, NULL);
+        /* no more options? */
+        if (opt<0) {
+            /* exit while loop */
+            break;
+        }
+        printf("Option: %c\n",opt);
+        switch (opt) {
+            case 'V': /* version */
+                printf(VERSION_STRING);
+                exit(EXIT_SUCCESS);
+                /* doesn't return */
+                break;
+            case 'v': /* verbose */
+                verbose_mode=1;
+                break;
+            case 'd': /* delay for CR's */
+                delaycr=atoi(optarg);
+                /* check value, negative or > MAX_DELAY ms is not allowed */
+                if ((delaycr<0)||(delaycr>MAX_DELAY)) {
+                    /* do we want to fail early? or do something unexpected
+                     * by the user? Let's fail for now */
+                    error(EXIT_FAILURE,0,"CR Delay (-d|--delaycr) out of bounds (0->%dms) at %d\n",MAX_DELAY,delaycr);
+                    /* no return */
+                }
+                break;
+            case 'D': /* delay for every character */
+                delay=atoi(optarg);
+                /* check value, negative or > MAX_DELAY ms is not allowed */
+                if ((delay<0)||(delay>MAX_DELAY)) {
+                    /* Same as above, fail early, don't confuse user */
+                    error(EXIT_FAILURE,0,"Char Delay (-D|--delay) out of bounds (0->%dms) at %d\n",MAX_DELAY,delay);
+                    /* no return */
+                }
+                break;
+            case 'f': /* send file */
+                /* save pointer to filename in argv[] array */
+                filename=optarg;
+                /* save which came first, file or string send */
+                fileindex=optind;
+                break;
+            case 's': /* send string */
+                sendstr=optarg;
+                /* save which came first, file or string send */
+                strindex=optind;
+                break;
+            case 'S': /* stay connected after file/string send */
+                stay_connected=1;
+                break;
+            case 'e': /* specify escape char, disallow '~' */
+                escape=optarg[0];
+                if ((escape<' ')||(escape>='~')) {
+                    fprintf(stderr,"Escape character invalid\n");
+                    if (escape=='~') {
+                        fprintf(stderr,"I won't allow you to use '~',\n"
+                                "\tyou'll hurt yourself if you're ssh'd into a system\n");
+                    }
+                    exit(EXIT_FAILURE);
+                    /* no return */
+                }
+                break;
+            case 'c': /* connect... really... connect this time! */
+                connect=1;
+                break;
+            case 'h': /* help */
+            default:  /* or anything weird */
+                usage(arg0,poptions);
+                /* doesn't return */
+                break;
+        }
+    }
+
+    /* hmmm, optind now points to rest of argv options... if we need them */
+
+    /* satisfy request for verboseness */
+    if (verbose_mode!=0) {
+        printf(VERSION_STRING);
+        if (escape!=ESCAPE_CHAR_DEFAULT) {
+            printf("Setting escape character to '%c'\n",escape);
+        }
+        if (delaycr>0) {
+            printf("Setting CR delay to %d ms\n",delaycr);
+        }
+        if (delay>0) {
+            printf("Setting Character delay to %d ms\n",delay);
+        }
+        if (stay_connected!=0) {
+            if ((fileindex==0)&&(strindex==0)) {
+                /* nothing to be sent, ignore stay_connected */
+                stay_connected=0;
+            } else {
+                printf("Will stay connected after sending ");
+                if ((fileindex>0)&&(strindex==0)) {
+                    printf("file");
+                } else if ((fileindex==0)&&(strindex>0)) {
+                    printf("string");
+                } else if (fileindex<strindex) {
+                    printf("file then string");
+                } else {
+                    printf("string then file");
+                }
+                printf(".\n");
+            }
+        }
+        if ((fileindex>0)&&(strindex==0)) {
+            printf("Sending file: %s\n",filename);
+        } else if ((fileindex==0)&&(strindex>0)) {
+            printf("Sending string: '%s'\n",sendstr);
+        } else if (fileindex<strindex) {
+            printf("Sending file: %s\n",filename);
+            printf("Sending string: '%s'\n",sendstr);
+        } else if ((fileindex>0)&&(strindex>0)) {
+            printf("Sending string: '%s'\n",sendstr);
+            printf("Sending file: '%s'\n",filename);
+        }
+    }
 
     free_mem(optstring,longoptarray);
 
-    usage(argv[0],poptions);
+    if (connect==0) {
+        fprintf(stderr,"\nConnect option not specified, preventing accidental invocation and\n"
+                "subsequent freaking out because your keyboard is dead and you didn't\n"
+                "read the man page or help.\n\n");
+        exit(EXIT_FAILURE);
+    }
+
 
     printf("Reminder: Escape sequence is '<CR> %c .'\n",escape_char);
-
     run();
 
     return EXIT_SUCCESS;
