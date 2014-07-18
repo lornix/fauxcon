@@ -337,7 +337,7 @@ static void run(void)
 static void build_opts_objects(
         progoptions* poptions,
         char** optstring,
-        struct option*** longopts)
+        struct option*** longoptarray)
 {
     /* which poptions value are we parsing? */
     int index=0;
@@ -403,31 +403,31 @@ static void build_opts_objects(
 
     /* give values back to caller */
     *optstring=ostr;
-    *longopts=lopts;
+    *longoptarray=lopts;
 }
 
-static void free_mem(char* optstring, struct option** longopts)
+static void free_mem(char* optstring, struct option** longoptarray)
 {
-    /* for each longoption entry, free! */
+    /* for each longoption entry, run free! */
     int longindex=0;
-    while (longopts[longindex]->name!=0) {
-        free(longopts[longindex]);
+    while (longoptarray[longindex]->name!=0) {
+        free(longoptarray[longindex]);
         longindex++;
     }
 
     /* drop the last all-zeros entry */
-    free(longopts[longindex]);
+    free(longoptarray[longindex]);
     /* and then the whole array thingy */
-    free(longopts);
+    free(longoptarray);
     /* and the option string */
     free(optstring);
 }
 
 static const char* showopt(int shortchar, const char* longname)
 {
-/* sigh.  Of course, someone will create a longname option over 80 chars
- * long... someday...
- */
+    /* sigh.  Of course, someone will create a longname option over 80 chars
+     * long... someday...
+     */
 #define SHOWOPTSTRLEN 80
 
     static char str[SHOWOPTSTRLEN+1];
@@ -564,42 +564,39 @@ static void usage(char* arg0, progoptions poptions[])
 
 int main(int argc, char* argv[])
 {
-
     progoptions poptions[]=
     {
-        /* short, long, has_arg, description */
-        { 'h',     "help",    0, "Show Help" },
-        { 'v',     "verbose", 0, "Verbose operation" },
-        { 'V',     "version", 0, "Show version information" },
-        { 'd',     "delaycr", 1, "Delay arg (ms) after every CR/LR character" },
-        { 'D',     "delay",   1, "Delay arg (ms) after every character" },
-        { 'f',     "file",    1, "Send contents of file 'arg' (and exit)" },
-        { 's',     "string",  1, "Send string 'arg' (and exit)" },
-        { 'S',     "stay",    0, "Stay connected after sending file or string" },
-        { 'e',     "escape",  1, "Specify Escape Character - Default (" Q(ESCAPE_CHAR_DEFAULT) ")" },
-        { 'c'|REQ, "connect", 0, "Connect to CONSOLE keyboard & mouse (REQUIRED)" },
-        { 0,0,0, /* compiler will concatenate these all together */
-            "Connect your keyboard to system's CONSOLE KB & Mouse.\n"
-            "\n"
-            "The required '-c/--connect' option is to prevent users from getting locked in\n"
-            "without knowing how to exit.  You must always include this option to connect.\n"
-            "\n"
-            "To exit once running, you'll need to type the escape sequence (much like ssh(1)),\n"
-            "by entering '<RETURN> % .', that is, the RETURN key, whatever your escape\n"
-            "character is (default is " Q(ESCAPE_CHAR_DEFAULT) "), and then a period ('.').\n"
+        /* short,   long,      has_arg, description */
+        {  'h',     "help",    0,       "Show Help" },
+        {  'v',     "verbose", 0,       "Verbose operation" },
+        {  'V',     "version", 0,       "Show version information" },
+        {  'd',     "delaycr", 1,       "Delay arg (ms) after every CR/LR character" },
+        {  'D',     "delay",   1,       "Delay arg (ms) after every character" },
+        {  'f',     "file",    1,       "Send contents of file 'arg' (and exit)" },
+        {  's',     "string",  1,       "Send string 'arg' (and exit)" },
+        {  'S',     "stay",    0,       "Stay connected after sending file or string" },
+        {  'e',     "escape",  1,       "Specify Escape Character - Default (" Q(ESCAPE_CHAR_DEFAULT) ")" },
+        {  'c'|REQ, "connect", 0,       "Connect to CONSOLE keyboard & mouse (REQUIRED)" },
+        {   0,0,0, /* compiler will concatenate these all together */
+            "Connect your keyboard to system's CONSOLE KB & Mouse.\n\n"
+                "The required '-c/--connect' option is to prevent users from getting locked in\n"
+                "without knowing how to exit.  You must always include this option to connect.\n\n"
+                "To exit once running, you'll need to type the escape sequence (much like ssh(1)),\n"
+                "by entering '<RETURN> % .', that is, the RETURN key, whatever your escape\n"
+                "character is (default is " Q(ESCAPE_CHAR_DEFAULT) "), and then a period ('.').\n"
         },
     };
 
     /* to be filled in */
     char* optstring=NULL;
-    struct option** longopts=NULL;
+    struct option** longoptarray=NULL;
 
-    /* create proper optstring & longopts from single poptions array */
-    build_opts_objects(poptions,&optstring,&longopts);
+    /* create proper optstring & longoptarray from single poptions array */
+    build_opts_objects(poptions,&optstring,&longoptarray);
 
-    /* printf("Optstring: '%s'\n",optstring); */
+    getopt_long(argc, argv, optstring, *longoptarray, NULL);
 
-    free_mem(optstring,longopts);
+    free_mem(optstring,longoptarray);
 
     usage(argv[0],poptions);
 
