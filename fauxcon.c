@@ -21,6 +21,8 @@
  *
  */
 
+/* #define TESTING */
+
 #define _BSD_SOURCE
 
 #include <stdio.h>
@@ -50,14 +52,21 @@
 /* No win either way.  Globals makes things cleaner at least.             */
 
 /* what is the default escape character? */
-#define ESCAPE_CHAR_DEFAULT "%"
+#define ESCAPE_CHAR_DEFAULT '%'
+
+/* create stringified version of macro*/
+#define Q(x) QQ(x)
+#define QQ(x) #x
+
 /* escape_char - what character is the escape char? Can't leave without it! */
-static char escape_char='%';
+static char escape_char=ESCAPE_CHAR_DEFAULT;
+
 /* file descriptor to write to uinput device */
 static int ufile=0;
 
 /* a nice enum to document what mode we want KB to end up */
 typedef enum { KBD_MODE_RAW, KBD_MODE_NORMAL } kbd_mode;
+
 /* perhaps a better way to build getopts/getopts_long structure ONCE */
 typedef struct {
     const char* shortname;
@@ -130,13 +139,14 @@ static void send_event(int type, int code, int value)
     }
 }
 
-/* convert an ASCII character we typed into a useful scancode for uinput */
+/* convert an ASCII character given into a useful scancode for uinput */
 static void sendchar(int val1)
 {
     /* need to press SHIFT for this key */
 #define USHIFT 0x1000
     /* need to press CTRL for this key */
 #define UCTRL  0x2000
+
     /* 1:1 lookup table.  128 entries, ASC('A')=65=KEY_A|USHIFT */
     static short keycode[]=
     {
@@ -164,6 +174,7 @@ static void sendchar(int val1)
     assert(keycode['A']==(KEY_A|USHIFT));
     assert(keycode['a']==(KEY_A));
     assert(keycode['~']==(KEY_GRAVE|USHIFT));
+    /* should be 128 entries in array */
     assert((sizeof(keycode)/sizeof(keycode[0]))==128);
 
     /* parse key, grabbing SHIFT & CTRL requirements */
@@ -178,10 +189,13 @@ static void sendchar(int val1)
     if (need_shift) {
         send_event(EV_KEY, KEY_LEFTSHIFT, 1);
     }
+
     /* press key */
     send_event(EV_KEY, key, 1);
+
     /* release key */
     send_event(EV_KEY, key, 0);
+
     /* now release the modifiers */
     if (need_shift) {
         send_event(EV_KEY, KEY_LEFTSHIFT, 0);
@@ -203,8 +217,11 @@ static void create_uinput()
     /* structure with name and other info */
     struct uinput_user_dev uinp;
     memset(&uinp, 0, sizeof(uinp));
+
     strncpy(uinp.name, "Faux Keyboard [TODO: & Mouse]", UINPUT_MAX_NAME_SIZE-1);
+
     uinp.id.bustype = BUS_USB;
+
     /* made up values, but didn't find anything using these values */
     uinp.id.vendor  = 0x9642;
     uinp.id.product = 0x0d0d;
@@ -224,7 +241,7 @@ static void create_uinput()
     ssize_t res=write(ufile, &uinp, sizeof(uinp));
     if (res!=sizeof(uinp)) {
         close(ufile);
-        error(2, errno, "Write error: %d != %d", (signed int)res, (signed int)sizeof(uinp));
+        error(2, errno, "Write error: %d (actual) != %d (expected)", (signed int)res, (signed int)sizeof(uinp));
         /* does not return */
     }
     /* magic happens here, honest */
@@ -310,6 +327,7 @@ static void run(void)
 }
 
 /* create proper getopt_long parameters from poptions struct */
+/* handles only short-name, only long-name or both type entries */
 static void build_opts_objects(
         progoptions* poptions,
         char** optstring,
@@ -325,41 +343,54 @@ static void build_opts_objects(
     int len=0;
     /* longoption array */
     struct option** lopts=NULL;
+
     /* while we aren't at the all-zeros last entry */
-    while (poptions[index].description!=0) {
+    while ((poptions[index].shortname!=0)||(poptions[index].longname!=0)) {
+
         /* if entry has a short name value */
         if (poptions[index].shortname!=0) {
+
             /* resize the string, add up to 3 chars (option+2:'s max)*/
             ostr=realloc(ostr,len+poptions[index].has_arg+2);
+
             /* grab first character of shortname string */
             ostr[len]=poptions[index].shortname[0];
             len++;
-            if (poptions[index].has_arg>1) {
-                ostr[len]=':';
-                len++;
-            }
+
+            /* arguments? Type 1 = required (1 colon) */
             if (poptions[index].has_arg>0) {
                 ostr[len]=':';
                 len++;
             }
+
+            /* arguments? Type 2 == optional (2 colons) */
+            if (poptions[index].has_arg>1) {
+                ostr[len]=':';
+                len++;
+            }
+
             /* fill end-of-string zero */
             ostr[len]=0;
         }
 
         /* if entry has a long name value */
         if (poptions[index].longname!=0) {
+
             /* resize the option array and fill in new entry */
             lopts=realloc(lopts,sizeof(struct option*)*(longindex+1));
             lopts[longindex]=calloc(1,sizeof(struct option));
+
             (*lopts[longindex]).name=poptions[index].longname;
             (*lopts[longindex]).has_arg=poptions[index].has_arg;
             (*lopts[longindex]).val=poptions[index].shortname[0];
             (*lopts[longindex]).flag=0;
+
             longindex++;
         }
 
         index++;
     }
+
     /* add the zero filled entry at end of longoption array */
     lopts=realloc(lopts,sizeof(struct option*)*(longindex+1));
     lopts[longindex]=calloc(1,sizeof(struct option));
@@ -370,21 +401,23 @@ static void build_opts_objects(
 }
 static void free_mem(char* optstring, struct option** longopts)
 {
-    free(optstring);
+    /* for each longoption entry, free! */
     int longindex=0;
     while (longopts[longindex]->name!=0) {
         free(longopts[longindex]);
         longindex++;
     }
+
+    /* drop the last all-zeros entry */
     free(longopts[longindex]);
+    /* and then the whole array thingy */
     free(longopts);
+    /* and the option string */
+    free(optstring);
 }
 
 int main(int argc, char* argv[])
 {
-    const char* description=
-        "Connect your keyboard to system's CONSOLE kb & mouse.  If nothing "
-        "specified, connect keyboard to CONSOLE.";
     progoptions poptions[]=
     {
         /* short, long, has_arg, description */
@@ -396,23 +429,26 @@ int main(int argc, char* argv[])
         { "f", "file",    1,  "Send contents of file (and exit)"            },
         { "s", "string",  1,  "Send string (and exit)"                      },
         { "S", "stay",    0,  "Stay connected after sending file or string" },
-        { "e", "escape",  1,  "Specify Escape Character - Default (" ESCAPE_CHAR_DEFAULT ")" },
-        { 0,0,0,0}
+        { "e", "escape",  1,  "Specify Escape Character - Default (" Q(ESCAPE_CHAR_DEFAULT) ")" },
+        { 0,0,0,"Connect your keyboard to system's CONSOLE KB & Mouse."}
     };
 
     /* to be filled in */
     char* optstring=NULL;
     struct option** longopts=NULL;
+
     /* create proper optstring & longopts from single poptions array */
     build_opts_objects(poptions,&optstring,&longopts);
-    printf("Optstring: '%s'\n",optstring);
 
+    printf("Optstring: '%s'\n",optstring);
 
     free_mem(optstring,longopts);
 
     printf("Reminder: Escape sequence is '<CR> %c .'\n",escape_char);
 
+#ifndef TESTING
     run();
+#endif
 
     return 0;
 }
