@@ -149,6 +149,7 @@ static void send_event(int type, int code, int value)
     }
 
     /* send sync event, reusing previous event structure */
+    gettimeofday(&event.time, NULL);
     event.type  = EV_SYN;
     event.code  = SYN_REPORT;
     event.value = 0;
