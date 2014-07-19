@@ -1,6 +1,10 @@
 /*
  * fauxcon - virtual console connection for keyboard and mouse
  *
+ * Licensed under the MIT License
+ * Copyright (c) 2014 L Nix lornix@lornix.com
+ * See LICENSE.md for specifics.
+ *
  * A simple utility to allow connecting to the CONSOLE keyboard and
  * mouse (TODO: add mouse passthrough)
  *

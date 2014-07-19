@@ -52,3 +52,6 @@ connects to another machine and passes keystrokes through.  Perhaps like `rsync`
 connecting to itself to do work. (would make constraining mouse easier, see 'mouse passthrough'
 TODO above)
 
+fauxcon is licensed under the MIT License
+Copyright (c) 2014 L Nix lornix@lornix.com
+See [LICENSE.md](LICENSE.md) for specifics.
