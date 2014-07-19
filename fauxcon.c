@@ -16,7 +16,6 @@
  * TODO: (-r) remote mode. Like how rsync does it, connect to remote system,
  *            talk to itself on that machine, connect and begin passing
  *            kb/mouse events.
- * TODO: (-f/-s) Allow multiple file/string send options, send in order
  *
  * <lornix@lornix.com> 2014-06-15
  *
@@ -216,7 +215,7 @@ static void sendchar(int any_key)
         send_event(EV_KEY, KEY_LEFTCTRL, 0);
     }
     /* did we send a carriage return? (or linefeed?) */
-    if ((any_key==10)||(any_key==13)) {
+    if ((any_key==13)||(any_key==10)) {
         /* rdelay overrides cdelay if present */
         if (rdelay>0) {
             usleep(rdelay*1000);
@@ -268,15 +267,15 @@ static void create_uinput()
     if (res!=sizeof(uinp)) {
         close(ufile);
         error(2, errno, "Write error: %d (actual) != %d (expected)", (signed int)res, (signed int)sizeof(uinp));
-        /* does not return */
+        /* no return */
     }
 
     /* magic happens here, honest */
     int retcode = ioctl(ufile, UI_DEV_CREATE);
-    if (retcode!=0) {
+    if (retcode) {
         close(ufile);
         error(2, errno, "Ioctl error: %d", retcode);
-        /* does not return */
+        /* no return */
     }
 }
 
@@ -292,9 +291,6 @@ static void destroy_uinput(void)
 
 static void connect_user(void)
 {
-    /* set up uinput device */
-    create_uinput();
-
     /* set input to nonblocking/raw mode */
     set_keyboard(KBD_MODE_RAW);
 
@@ -348,15 +344,48 @@ static void connect_user(void)
 
     /* set input to 'normal' mode */
     set_keyboard(KBD_MODE_NORMAL);
-
-    /* remove everything */
-    destroy_uinput();
 }
 
+static void connect_string(char* sendstr)
+{
+    while (*sendstr) {
+        sendchar(*sendstr);
+        sendstr++;
+    }
+}
+
+static void connect_file(char* filename)
+{
+
+#define FILE_BUFFER_SIZE 1024
+
+    char buffer[FILE_BUFFER_SIZE+1];
+
+    FILE* fp=fopen(filename,"r");
+
+    while (1) {
+        int num_read=fread(buffer,FILE_BUFFER_SIZE,1,fp);
+        /* input all gone! */
+        if (num_read==0) {
+            break;
+        }
+
+        char* ptr=buffer;
+        while (num_read) {
+            sendchar(*ptr);
+            ptr++;
+            num_read--;
+        }
+    }
+
+    fclose(fp);
+}
+
+/* build string to show short & long option name: -h|--help */
 static const char* showopt(int shortchar, const char* longname)
 {
-    /* sigh.  Of course, someone will create a longname option over 80 chars
-     * long... someday...
+    /* sigh.  Of course, someone will create a longname
+     * option over 80 chars long... someday...
      */
 #define SHOWOPTSTRLEN 80
 
@@ -364,16 +393,16 @@ static const char* showopt(int shortchar, const char* longname)
     /* always start with empty string */
     str[0]=0;
 
-    if (shortchar!=0) {
+    if (shortchar) {
         /* fake it */
         strncat(str,"-x",SHOWOPTSTRLEN);
         /* and poke in proper value */
         str[strlen(str)-1]=shortchar&(~REQ);
     }
-    if ((shortchar!=0)&&(longname!=0)) {
+    if ((shortchar)&&(longname)) {
         strncat(str,"|",SHOWOPTSTRLEN);
     }
-    if (longname!=0) {
+    if (longname) {
         strncat(str,"--",SHOWOPTSTRLEN);
         strncat(str,longname,SHOWOPTSTRLEN);
     }
@@ -381,6 +410,7 @@ static const char* showopt(int shortchar, const char* longname)
     return str;
 }
 
+/* build string to show optional-ness of argument: [arg] */
 static const char* showarg(int has_arg)
 {
 #define SHOWARGSTRLEN 6
@@ -409,8 +439,7 @@ static const char* showarg(int has_arg)
 
 static void usage(char* arg0)
 {
-    printf("\n");
-
+    /* custom struct to hold short-name/long-name/descriptions of options */
     progoptions poptions[]=
     {
         /* short,   long,      has_arg, description */
@@ -419,9 +448,10 @@ static void usage(char* arg0)
         {  'V',     "version", 0,       "Show version information" },
         {  'r',     "rdelay",  1,       "Delay arg (ms) after every <RETURN> character" },
         {  'c',     "cdelay",  1,       "Delay arg (ms) after every character" },
-        {  'f',     "file",    1,       "Send contents of file 'arg' (and exit)" },
-        {  's',     "string",  1,       "Send string 'arg' (and exit)" },
-        {  'S',     "stay",    0,       "Stay connected after sending file or string" },
+        {  'f',     "file",    1,       "Send contents of file 'arg'" },
+        {  's',     "string",  1,       "Send string 'arg'" },
+        {  'S',     "strcr",   1,       "Send string 'arg' (append CR)" },
+        {  'k',     "keep",    0,       "Keep connection after sending file or string" },
         {  'e',     "escape",  1,       "Specify Escape Character - Default (" Q(ESCAPE_CHAR_DEFAULT) ")" },
         {  'C'|REQ, "connect", 0,       "Connect to CONSOLE keyboard & mouse (REQUIRED)" },
         {   0,0,0, /* compiler will concatenate these all together */
@@ -434,13 +464,16 @@ static void usage(char* arg0)
         },
     };
 
+    printf("\n");
+
+    /* show program name (basename) */
     int line_len=printf("%s",arg0);
 
     int max_opt_len=0;
 
     /* show initial line/layout for options with command name */
     int index=0;
-    while ((poptions[index].shortchar!=0)||(poptions[index].longname!=0)) {
+    while ((poptions[index].shortchar)||(poptions[index].longname)) {
         int opt_len=0;
         int len=0;
 
@@ -477,6 +510,7 @@ static void usage(char* arg0)
             printf("\n%*s",line_len,"");
         }
 
+        /* we're determining max option length for next phase below */
         if (opt_len>max_opt_len) {
             max_opt_len=opt_len;
         }
@@ -485,17 +519,22 @@ static void usage(char* arg0)
     }
     printf("\n\n");
 
-    /* display the long description stored in the tail of the struct */
+    /*
+     * display the long description stored in the tail of the struct
+     * which we just happen to be pointed at with [index]
+     */
     printf("%s\n",poptions[index].description);
 
     /* now show options with descriptions */
     index=0;
-    while ((poptions[index].shortchar!=0)||(poptions[index].longname!=0)) {
+    while ((poptions[index].shortchar)||(poptions[index].longname)) {
         /* initial padding on line */
         printf("  ");
 
+        /* show formatted option, short|long */
         int len=printf("%s",showopt(poptions[index].shortchar&(~REQ),poptions[index].longname));
 
+        /* show arg required (optional) if needed */
         if (poptions[index].has_arg>0) {
             len+=printf("%s",showarg(poptions[index].has_arg));
         }
@@ -505,12 +544,16 @@ static void usage(char* arg0)
 
         /* and pad to make columns line up */
         printf("%*s",len,"");
+
+        /* tack on the description */
         printf("%s\n",poptions[index].description);
 
         index++;
     }
     printf("\n");
+
     printf(VERSION_STRING);
+
     exit(EXIT_FAILURE);
 }
 
@@ -526,7 +569,7 @@ int main(int argc, char* argv[])
     assert((sizeof(keycode)/sizeof(keycode[0]))==128);
 
     /* short options */
-    char* optstring="hvVr:c:f:s:Se:C";
+    char* optstring="hvVr:c:f:s:S:ke:C";
 
     /* long options */
     struct option longopt[]={
@@ -537,7 +580,8 @@ int main(int argc, char* argv[])
         { "cdelay",  1, 0, 'c' },
         { "file",    1, 0, 'f' },
         { "string",  1, 0, 's' },
-        { "stay",    0, 0, 'S' },
+        { "strcr",   1, 0, 'S' },
+        { "keep",    0, 0, 'k' },
         { "escape",  1, 0, 'e' },
         { "connect", 0, 0, 'C' },
         { 0,         0, 0, 0   },
@@ -552,10 +596,9 @@ int main(int argc, char* argv[])
     rdelay=0;
     cdelay=0;
     /* locals */
-    char* filename=NULL;
-    char* sendstr=NULL;
-    int stay_connected=0;
+    int keep_connection=0;
     int connect=0;
+    int sending=0;
 
     /* prevent getopt_long from printing error messages */
     opterr=0;
@@ -565,58 +608,63 @@ int main(int argc, char* argv[])
 
     while (1) {
         int opt=getopt_long(argc, argv, optstring, longopt, NULL);
+
         /* no more options? */
         if (opt<0) {
             /* exit while loop */
             break;
         }
+
         switch (opt) {
+            case 'C': /* connect... really... connect this time! */
+                connect=1;
+                break;
             case 'V': /* version */
                 printf(VERSION_STRING);
                 exit(EXIT_SUCCESS);
-                /* doesn't return */
+                /* no return */
                 break;
             case 'v': /* verbose - multiple means more */
                 verbose_mode+=1;
                 break;
-            case 'r': /* delay for RETURN's */
-                if ((optarg[0]=='d')&&(optarg[1]=='e')) {
-                    error(EXIT_FAILURE,0,"Single dash on long option --rdelay\n");
-                    /* no return */
-                }
-                errno=0;
-                rdelay=strtol(optarg,NULL,0);
-                /* check value, zero, negative or > MAX_DELAY ms is not allowed */
-                if ((errno!=0)||(rdelay<1)||(rdelay>MAX_DELAY)) {
-                    /* do we want to fail early? or do something unexpected
-                     * by the user? Let's fail for now */
-                    error(EXIT_FAILURE,0,"<RETURN> delay (-r|--rdelay) out of bounds (1->%dms) at %d\n",MAX_DELAY,rdelay);
-                    /* no return */
-                }
+            case 'k': /* keep connection after file/string send */
+                keep_connection=1;
                 break;
+            case 'r': /* delay for RETURN's */
             case 'c': /* delay for every character */
                 if ((optarg[0]=='d')&&(optarg[1]=='e')) {
-                    error(EXIT_FAILURE,0,"Single dash on long option --cdelay\n");
+                    error(EXIT_FAILURE,0,"Single dash on long --%cdelay option\n",opt);
                     /* no return */
                 }
                 errno=0;
-                cdelay=strtol(optarg,NULL,0);
+                int delay=strtol(optarg,NULL,0);
                 /* check value, zero, negative or > MAX_DELAY ms is not allowed */
-                if ((errno!=0)||(cdelay<1)||(cdelay>MAX_DELAY)) {
-                    /* Same as above, fail early, don't confuse user */
-                    error(EXIT_FAILURE,0,"Char delay (-c|--cdelay) out of bounds (1->%dms) at %d\n",MAX_DELAY,cdelay);
+                if ((errno)||(delay<1)||(delay>MAX_DELAY)) {
+                    /* do we want to fail early? or do something unexpected
+                     * by the user? Let's fail for now */
+                    error(EXIT_FAILURE,errno,"Delay (-%c|--%cdelay) out of bounds (1->%dms) at %d\n",opt,opt,MAX_DELAY,delay);
                     /* no return */
+                }
+                if (opt=='r') {
+                    rdelay=delay;
+                } else if (opt=='c') {
+                    cdelay=delay;
                 }
                 break;
             case 'f': /* send file */
-                /* save pointer to filename in argv[] array */
-                filename=optarg;
+                /* verify file exists and is readable */
+                if (access(optarg,R_OK)) {
+                    error(EXIT_FAILURE,errno,"Unable to read file: '%s'",optarg);
+                    /* no return */
+                }
+                /* note that we're sending something */
+                sending=1;
                 break;
             case 's': /* send string */
-                sendstr=optarg;
-                break;
-            case 'S': /* stay connected after file/string send */
-                stay_connected=1;
+            case 'S': /* send string + CR */
+                /* skip these for now, we'll act on them during second pass */
+                /* but note that sending of something was requested */
+                sending=1;
                 break;
             case 'e': /* specify escape char, disallow '~' */
                 escape_char=optarg[0];
@@ -630,21 +678,19 @@ int main(int argc, char* argv[])
                     /* no return */
                 }
                 break;
-            case 'C': /* connect... really... connect this time! */
-                connect=1;
-                break;
             case 'h': /* help */
             default:  /* or anything weird */
                 usage(arg0);
-                /* doesn't return */
+                /* no return */
                 break;
         }
     }
 
     /* hmmm, optind now points to rest of argv options... if we need them */
+    /* should we check for trailing non-option junk on line? */
 
     /* satisfy request for verboseness */
-    if (verbose_mode!=0) {
+    if (verbose_mode) {
         printf(VERSION_STRING);
         if (escape_char!=ESCAPE_CHAR_DEFAULT) {
             printf("Setting escape character to '%c'\n",escape_char);
@@ -655,29 +701,11 @@ int main(int argc, char* argv[])
         if (cdelay>0) {
             printf("Setting Character delay to %d ms\n",cdelay);
         }
-        if (stay_connected!=0) {
-            if ((filename==NULL)&&(sendstr==NULL)) {
-                /* nothing to be sent, ignore stay_connected */
-                stay_connected=0;
-            } else {
-                printf("Will stay connected after sending ");
-                if (filename!=NULL) {
-                    printf("file");
-                }
-                if ((filename!=NULL)&&(sendstr!=NULL)) {
-                    printf(" and ");
-                }
-                if (sendstr!=NULL) {
-                    printf("string");
-                }
-                printf(".\n");
-            }
-        }
-        if (filename!=NULL) {
-            printf("Sending file: %s\n",filename);
-        }
-        if (sendstr!=NULL) {
-            printf("Sending string: '%s'\n",sendstr);
+        /* nothing to be sent? reset keep_connection */
+        keep_connection=keep_connection&sending;
+        if (keep_connection) {
+            printf("Will keep connection open after sending files or strings.\n");
+
         }
     }
 
@@ -688,8 +716,45 @@ int main(int argc, char* argv[])
         exit(EXIT_FAILURE);
     }
 
-    printf("Reminder: Escape sequence is '<CR> %c .'\n",escape_char);
-    connect_user();
+    /* set up uinput device */
+    create_uinput();
+
+    /* loop through args again, to process file/string sending in order given */
+    optind=1;
+
+    while (1) {
+        int opt=getopt_long(argc, argv, optstring, longopt, NULL);
+
+        /* no more options? */
+        if (opt<0) {
+            /* exit while loop */
+            break;
+        }
+
+        switch (opt) {
+            case 'f': /* send file */
+                connect_file(optarg);
+                break;
+            case 's': /* send string */
+            case 'S': /* send string + CR */
+                connect_string(optarg);
+                /* append CR? */
+                if (opt=='S') {
+                    sendchar(13);
+                }
+                break;
+            default: /* we're ignoring everything else */
+                break;
+        }
+    }
+
+    if (((sending)&&(keep_connection))||(sending==0)) {
+        printf("Reminder: Escape sequence is '<CR> %c .'\n",escape_char);
+        connect_user();
+    }
+
+    /* remove everything */
+    destroy_uinput();
 
     return EXIT_SUCCESS;
 }
