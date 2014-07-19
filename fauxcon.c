@@ -47,6 +47,8 @@
 #include <sys/ioctl.h>
 #include <sys/select.h>
 #include <getopt.h>
+extern char* optarg;
+extern int optind, opterr, optopt;
 
 /* #include <linux/input.h>                               */
 /* not needed, since <linux/uinput.h> includes it already */
@@ -73,7 +75,7 @@
 /* arbitrary line length limit, prevents wrap on typical display */
 static const int MAX_LINE_LENGTH=70;
 
-/* Maximum delaycr/delay value, in milliseconds */
+/* Maximum rdelay/cdelay value, in milliseconds */
 static const int MAX_DELAY=2000;
 
 /* escape_char - what character is the escape char? Can't leave without it! */
@@ -348,9 +350,9 @@ static void run(void)
 /* create proper getopt_long parameters from poptions struct */
 /* handles only short-name, only long-name or both type entries */
 static void build_opts_objects(
-        progoptions* poptions,
+        const progoptions* poptions,
         char** optstring,
-        struct option*** longoptarray)
+        struct option** longopt)
 {
     /* which poptions value are we parsing? */
     int index=0;
@@ -360,8 +362,6 @@ static void build_opts_objects(
     char* ostr=NULL;
     /* and length */
     int len=0;
-    /* longoption array */
-    struct option** lopts=NULL;
 
     /* while we aren't at the all-zeros last entry */
     while ((poptions[index].shortchar!=0)||(poptions[index].longname!=0)) {
@@ -369,40 +369,30 @@ static void build_opts_objects(
         /* if entry has a short name value */
         if (poptions[index].shortchar!=0) {
 
-            /* resize the string, add up to 3 chars (option+2:'s max)*/
-            ostr=realloc(ostr,len+poptions[index].has_arg+2);
-
-            /* grab character in shortchar (mask off the REQ flag) */
+            /* resize the string to add new characters */
+            ostr=realloc(ostr,len+4);
+            /* force a zero terminator */
+            ostr[len]=0;
+            /* add dummy string to end */
+            strncat(ostr,"X::",len+4);
+            /* fill in proper value */
             ostr[len]=poptions[index].shortchar&(~REQ);
-            len++;
-
-            /* arguments? Type 1 = required (1 colon) */
-            if (poptions[index].has_arg>0) {
-                ostr[len]=':';
-                len++;
-            }
-
-            /* arguments? Type 2 == optional (2 colons) */
-            if (poptions[index].has_arg>1) {
-                ostr[len]=':';
-                len++;
-            }
-
-            /* fill end-of-string zero */
+            /* update length */
+            len+=1+poptions[index].has_arg;
+            /* and make sure it's zero terminated */
             ostr[len]=0;
         }
 
-        /* if entry has a long name value */
+         /* if entry has a long name value */
         if (poptions[index].longname!=0) {
+             /* resize the option array and fill in new entry */
+            *longopt=realloc(*longopt,sizeof(struct option*)*(longindex+1));
+            longopt[longindex]=calloc(1,sizeof(struct option));
 
-            /* resize the option array and fill in new entry */
-            lopts=realloc(lopts,sizeof(struct option*)*(longindex+1));
-            lopts[longindex]=calloc(1,sizeof(struct option));
-
-            (*lopts[longindex]).name=poptions[index].longname;
-            (*lopts[longindex]).has_arg=poptions[index].has_arg;
-            (*lopts[longindex]).val=poptions[index].shortchar&(~REQ);
-            (*lopts[longindex]).flag=0;
+            longopt[longindex]->name=poptions[index].longname;
+            longopt[longindex]->has_arg=poptions[index].has_arg;
+            longopt[longindex]->val=poptions[index].shortchar&(~REQ);
+            longopt[longindex]->flag=0;
 
             longindex++;
         }
@@ -411,29 +401,41 @@ static void build_opts_objects(
     }
 
     /* add the zero filled entry at end of longoption array */
-    lopts=realloc(lopts,sizeof(struct option*)*(longindex+1));
-    lopts[longindex]=calloc(1,sizeof(struct option));
+    *longopt=realloc(*longopt,sizeof(struct option*)*(longindex+1));
+    longopt[longindex]=calloc(1,sizeof(struct option));
 
-    /* give values back to caller */
+    int i=0;
+    for (i=0; longopt[i]->name!=0; i++) {
+        printf("boo: longopt[%2d] = %2d %8p %c %s\n", i, longopt[i]->has_arg, longopt[i]->flag, longopt[i]->val, longopt[i]->name);
+    }
+    printf("boo: longopt[%2d] = %2d %8p %c %s\n", i, longopt[i]->has_arg, longopt[i]->flag, longopt[i]->val, longopt[i]->name);
+
+    /* return value to caller */
     *optstring=ostr;
-    *longoptarray=lopts;
 }
 
-static void free_mem(char* optstring, struct option** longoptarray)
+static void free_mem(char** optstring, struct option** longopt)
 {
     /* for each longoption entry, run free! */
-    int longindex=0;
-    while (longoptarray[longindex]->name!=0) {
-        free(longoptarray[longindex]);
-        longindex++;
-    }
+    if (*longopt!=NULL) {
+        int longindex=0;
+        while ((longopt[longindex]!=NULL)&&(longopt[longindex]->name!=0)) {
+            printf("free_mem: longopt[%d]->name = %s\n",longindex,longopt[longindex]->name);
+            free(longopt[longindex]);
+            longindex++;
+        }
 
-    /* drop the last all-zeros entry */
-    free(longoptarray[longindex]);
-    /* and then the whole array thingy */
-    free(longoptarray);
+        /* drop the last all-zeros entry */
+        if (longopt[longindex]!=NULL) {
+            free(longopt[longindex]);
+        }
+        /* and then the whole array thingy */
+        free(*longopt);
+    }
     /* and the option string */
-    free(optstring);
+    if (*optstring!=NULL) {
+        free(*optstring);
+    }
 }
 
 static const char* showopt(int shortchar, const char* longname)
@@ -492,6 +494,10 @@ static const char* showarg(int has_arg)
 
 static void usage(char* arg0, progoptions poptions[])
 {
+
+    printf("usage displayed here\n");
+    exit(EXIT_FAILURE);
+
     printf("\n");
 
     int line_len=printf("%s",arg0);
@@ -561,7 +567,7 @@ static void usage(char* arg0, progoptions poptions[])
         }
 
         /* figure out current width */
-        len=max_opt_len-len+2;
+        len=2+max_opt_len-len;
 
         /* and pad to make columns line up */
         printf("%*s",len,"");
@@ -578,16 +584,19 @@ int main(int argc, char* argv[])
     progoptions poptions[]=
     {
         /* short,   long,      has_arg, description */
+        {  '@',     "@@@@",    0,       "Gibberish filler" },
+        {   0 ,     "@@@@",    0,       "Gibberish filler" },
+        {  '@',      NULL,     0,       "Gibberish filler" },
         {  'h',     "help",    0,       "Show Help" },
         {  'v',     "verbose", 0,       "Verbose operation" },
         {  'V',     "version", 0,       "Show version information" },
-        {  'd',     "delaycr", 1,       "Delay arg (ms) after every CR/LR character" },
-        {  'D',     "delay",   1,       "Delay arg (ms) after every character" },
+        {  'r',     "rdelay",  1,       "Delay arg (ms) after every <RETURN> character" },
+        {  'c',     "cdelay",  1,       "Delay arg (ms) after every character" },
         {  'f',     "file",    1,       "Send contents of file 'arg' (and exit)" },
         {  's',     "string",  1,       "Send string 'arg' (and exit)" },
         {  'S',     "stay",    0,       "Stay connected after sending file or string" },
         {  'e',     "escape",  1,       "Specify Escape Character - Default (" Q(ESCAPE_CHAR_DEFAULT) ")" },
-        {  'c'|REQ, "connect", 0,       "Connect to CONSOLE keyboard & mouse (REQUIRED)" },
+        {  'C'|REQ, "connect", 0,       "Connect to CONSOLE keyboard & mouse (REQUIRED)" },
         {   0,0,0, /* compiler will concatenate these all together */
             "Connect your keyboard to system's CONSOLE KB & Mouse.\n\n"
                 "The required '-c/--connect' option is to prevent users from getting locked in\n"
@@ -599,19 +608,46 @@ int main(int argc, char* argv[])
     };
 
     /* to be filled in */
+    struct option* longopt=NULL;
     char* optstring=NULL;
-    struct option** longoptarray=NULL;
 
-    /* create proper optstring & longoptarray from single poptions array */
-    build_opts_objects(poptions,&optstring,&longoptarray);
+    struct option lo[]={
+        { "@@@@",    0, 0, '@' },
+        { "@@@@",    0, 0, '@' },
+        { "help",    0, 0, 'h' },
+        { "verbose", 0, 0, 'v' },
+        { "version", 0, 0, 'V' },
+        { "rdelay",  1, 0, 'r' },
+        { "cdelay",  1, 0, 'c' },
+        { "file",    1, 0, 'f' },
+        { "string",  1, 0, 's' },
+        { "stay",    0, 0, 'S' },
+        { "escape",  1, 0, 'e' },
+        { "connect", 0, 0, 'C' },
+        { 0,         0, 0, 0   },
+    };
+
+
+    /* create proper optstring & longopt from single poptions array */
+    build_opts_objects(poptions,&optstring,&longopt);
+
+    /*
+     * int i=0;
+     * for (i=0; lo[i].name!=0; i++) {
+     *     printf("main: longopt[%2d] = %p %2d %6p %c %10s\t", i, &longopt[i], longopt[i].has_arg, longopt[i].flag, longopt[i].val, longopt[i].name);
+     *     printf("lo[%2d] = %p %2d %6p %c %10s\n", i, &lo[i], lo[i].has_arg, lo[i].flag, lo[i].val, lo[i].name);
+     * }
+     * printf("main: longopt[%2d] = %p %2d %6p %c %10s\t", i, &longopt[i], longopt[i].has_arg, longopt[i].flag, longopt[i].val, longopt[i].name);
+     * printf("lo[%2d] = %p %2d %6p %c %10s\n", i, &lo[i], lo[i].has_arg, lo[i].flag, lo[i].val, lo[i].name);
+     */
 
     /* fetch basename of argv[0] */
     char* arg0=basename(argv[0]);
 
     /* preset the defaults for the various flags & settings */
     int verbose_mode=0;
-    int delaycr=0;
-    int delay=0;
+    int rdelay=0;
+    int cdelay=0;
     char* filename=NULL;
     char* sendstr=NULL;
     int stay_connected=0;
@@ -621,13 +657,13 @@ int main(int argc, char* argv[])
     int strindex=0;
 
     /* prevent getopt_long from printing error messages */
-    opterr=0;
+    /* opterr=0; */
 
     /* start from beginning */
     optind=1;
 
     while (1) {
-        int opt=getopt_long(argc, argv, optstring, *longoptarray, NULL);
+        int opt=getopt_long(argc, argv, optstring, longopt, NULL);
         /* no more options? */
         if (opt<0) {
             /* exit while loop */
@@ -643,22 +679,22 @@ int main(int argc, char* argv[])
             case 'v': /* verbose */
                 verbose_mode=1;
                 break;
-            case 'd': /* delay for CR's */
-                delaycr=atoi(optarg);
-                /* check value, negative or > MAX_DELAY ms is not allowed */
-                if ((delaycr<0)||(delaycr>MAX_DELAY)) {
+            case 'r': /* delay for RETURN's */
+                rdelay=atoi(optarg);
+                /* check value, zero, negative or > MAX_DELAY ms is not allowed */
+                if ((rdelay<1)||(rdelay>MAX_DELAY)) {
                     /* do we want to fail early? or do something unexpected
                      * by the user? Let's fail for now */
-                    error(EXIT_FAILURE,0,"CR Delay (-d|--delaycr) out of bounds (0->%dms) at %d\n",MAX_DELAY,delaycr);
+                    error(EXIT_FAILURE,0,"<RETURN> delay (-r|--rdelay) out of bounds (1->%dms) at %d\n",MAX_DELAY,rdelay);
                     /* no return */
                 }
                 break;
-            case 'D': /* delay for every character */
-                delay=atoi(optarg);
-                /* check value, negative or > MAX_DELAY ms is not allowed */
-                if ((delay<0)||(delay>MAX_DELAY)) {
+            case 'c': /* delay for every character */
+                cdelay=atoi(optarg);
+                /* check value, zero, negative or > MAX_DELAY ms is not allowed */
+                if ((cdelay<1)||(cdelay>MAX_DELAY)) {
                     /* Same as above, fail early, don't confuse user */
-                    error(EXIT_FAILURE,0,"Char Delay (-D|--delay) out of bounds (0->%dms) at %d\n",MAX_DELAY,delay);
+                    error(EXIT_FAILURE,0,"Char delay (-c|--cdelay) out of bounds (1->%dms) at %d\n",MAX_DELAY,cdelay);
                     /* no return */
                 }
                 break;
@@ -681,14 +717,14 @@ int main(int argc, char* argv[])
                 if ((escape<' ')||(escape>='~')) {
                     fprintf(stderr,"Escape character invalid\n");
                     if (escape=='~') {
-                        fprintf(stderr,"I won't allow you to use '~',\n"
+                        fprintf(stderr,"I can't allow you to use '~',\n"
                                 "\tyou'll hurt yourself if you're ssh'd into a system\n");
                     }
                     exit(EXIT_FAILURE);
                     /* no return */
                 }
                 break;
-            case 'c': /* connect... really... connect this time! */
+            case 'C': /* connect... really... connect this time! */
                 connect=1;
                 break;
             case 'h': /* help */
@@ -707,11 +743,11 @@ int main(int argc, char* argv[])
         if (escape!=ESCAPE_CHAR_DEFAULT) {
             printf("Setting escape character to '%c'\n",escape);
         }
-        if (delaycr>0) {
-            printf("Setting CR delay to %d ms\n",delaycr);
+        if (rdelay>0) {
+            printf("Setting <RETURN> delay to %d ms\n",rdelay);
         }
-        if (delay>0) {
-            printf("Setting Character delay to %d ms\n",delay);
+        if (cdelay>0) {
+            printf("Setting Character delay to %d ms\n",cdelay);
         }
         if (stay_connected!=0) {
             if ((fileindex==0)&&(strindex==0)) {
@@ -744,7 +780,7 @@ int main(int argc, char* argv[])
         }
     }
 
-    free_mem(optstring,longoptarray);
+    free_mem(&optstring,&longopt);
 
     if (connect==0) {
         fprintf(stderr,"\nConnect option not specified, preventing accidental invocation and\n"
@@ -752,7 +788,6 @@ int main(int argc, char* argv[])
                 "read the man page or help.\n\n");
         exit(EXIT_FAILURE);
     }
-
 
     printf("Reminder: Escape sequence is '<CR> %c .'\n",escape_char);
     run();
