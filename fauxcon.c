@@ -96,6 +96,31 @@ typedef struct {
     const char* description;
 } progoptions;
 
+/* need to press SHIFT for this key */
+#define USHIFT 0x1000
+/* need to press CTRL for this key */
+#define UCTRL  0x2000
+/* 1:1 lookup table.  128 entries, ASC('A')=65=KEY_A|USHIFT */
+static const short keycode[]=
+{
+    /*00 @ABCDEFG */ KEY_2|USHIFT|UCTRL, KEY_A|UCTRL, KEY_B|UCTRL, KEY_C|UCTRL, KEY_D|UCTRL, KEY_E|UCTRL, KEY_F|UCTRL, KEY_G|UCTRL,
+    /*08 HIJKLMNO */ KEY_H|UCTRL, KEY_I|UCTRL, KEY_J|UCTRL, KEY_K|UCTRL, KEY_L|UCTRL, KEY_M|UCTRL, KEY_N|UCTRL, KEY_O|UCTRL,
+    /*10 PQRSTUVW */ KEY_P|UCTRL, KEY_Q|UCTRL, KEY_R|UCTRL, KEY_S|UCTRL, KEY_T|UCTRL, KEY_U|UCTRL, KEY_V|UCTRL, KEY_W|UCTRL,
+    /*18 XYZ..... */ KEY_X|UCTRL, KEY_Y|UCTRL, KEY_Z|UCTRL, KEY_ESC, 0, 0, 0, 0,
+    /*20  !"#$%&' */ KEY_SPACE, KEY_1|USHIFT, KEY_APOSTROPHE|USHIFT, KEY_3|USHIFT, KEY_4|USHIFT, KEY_5|USHIFT, KEY_7|USHIFT, KEY_APOSTROPHE,
+    /*28 ()*+,-./ */ KEY_9|USHIFT, KEY_0|USHIFT, KEY_8|USHIFT, KEY_EQUAL|USHIFT, KEY_COMMA, KEY_MINUS, KEY_DOT, KEY_SLASH,
+    /*30 01234567 */ KEY_0, KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7,
+    /*38 89:;<=>? */ KEY_8, KEY_9, KEY_SEMICOLON|USHIFT, KEY_SEMICOLON, KEY_COMMA|USHIFT, KEY_EQUAL, KEY_DOT|USHIFT, KEY_SLASH|USHIFT,
+    /*40 @ABCDEFG */ KEY_2|USHIFT, KEY_A|USHIFT, KEY_B|USHIFT, KEY_C|USHIFT, KEY_D|USHIFT, KEY_E|USHIFT, KEY_F|USHIFT, KEY_G|USHIFT,
+    /*48 HIJKLMNO */ KEY_H|USHIFT, KEY_I|USHIFT, KEY_J|USHIFT, KEY_K|USHIFT, KEY_L|USHIFT, KEY_M|USHIFT, KEY_N|USHIFT, KEY_O|USHIFT,
+    /*50 PQRSTUVW */ KEY_P|USHIFT, KEY_Q|USHIFT, KEY_R|USHIFT, KEY_S|USHIFT, KEY_T|USHIFT, KEY_U|USHIFT, KEY_V|USHIFT, KEY_W|USHIFT,
+    /*58 XYZ[\]^_ */ KEY_X|USHIFT, KEY_Y|USHIFT, KEY_Z|USHIFT, KEY_LEFTBRACE, KEY_BACKSLASH, KEY_RIGHTBRACE, KEY_6|USHIFT, KEY_MINUS|USHIFT,
+    /*60 `abcdefg */ KEY_GRAVE, KEY_A, KEY_B, KEY_C, KEY_D, KEY_E, KEY_F, KEY_G,
+    /*68 hijklmno */ KEY_H, KEY_I, KEY_J, KEY_K, KEY_L, KEY_M, KEY_N, KEY_O,
+    /*70 pqrstuvw */ KEY_P, KEY_Q, KEY_R, KEY_S, KEY_T, KEY_U, KEY_V, KEY_W,
+    /*78 xyz{|}~  */ KEY_X, KEY_Y, KEY_Z, KEY_LEFTBRACE|USHIFT, KEY_BACKSLASH|USHIFT, KEY_RIGHTBRACE|USHIFT, KEY_GRAVE|USHIFT, KEY_BACKSPACE
+};
+
 /* Do processing to set KB to raw or cooked mode. */
 /* Saves old state to restore later.              */
 static void set_keyboard(kbd_mode kmode)
@@ -162,47 +187,12 @@ static void send_event(int type, int code, int value)
 }
 
 /* convert an ASCII character given into a useful scancode for uinput */
-static void sendchar(int val1)
+static void sendchar(int any_key)
 {
-    /* need to press SHIFT for this key */
-#define USHIFT 0x1000
-    /* need to press CTRL for this key */
-#define UCTRL  0x2000
-
-    /* 1:1 lookup table.  128 entries, ASC('A')=65=KEY_A|USHIFT */
-    static short keycode[]=
-    {
-        /*00 @ABCDEFG */ KEY_2|USHIFT|UCTRL, KEY_A|UCTRL, KEY_B|UCTRL, KEY_C|UCTRL, KEY_D|UCTRL, KEY_E|UCTRL, KEY_F|UCTRL, KEY_G|UCTRL,
-        /*08 HIJKLMNO */ KEY_H|UCTRL, KEY_I|UCTRL, KEY_J|UCTRL, KEY_K|UCTRL, KEY_L|UCTRL, KEY_M|UCTRL, KEY_N|UCTRL, KEY_O|UCTRL,
-        /*10 PQRSTUVW */ KEY_P|UCTRL, KEY_Q|UCTRL, KEY_R|UCTRL, KEY_S|UCTRL, KEY_T|UCTRL, KEY_U|UCTRL, KEY_V|UCTRL, KEY_W|UCTRL,
-        /*18 XYZ..... */ KEY_X|UCTRL, KEY_Y|UCTRL, KEY_Z|UCTRL, KEY_ESC, 0, 0, 0, 0,
-        /*20  !"#$%&' */ KEY_SPACE, KEY_1|USHIFT, KEY_APOSTROPHE|USHIFT, KEY_3|USHIFT, KEY_4|USHIFT, KEY_5|USHIFT, KEY_7|USHIFT, KEY_APOSTROPHE,
-        /*28 ()*+,-./ */ KEY_9|USHIFT, KEY_0|USHIFT, KEY_8|USHIFT, KEY_EQUAL|USHIFT, KEY_COMMA, KEY_MINUS, KEY_DOT, KEY_SLASH,
-        /*30 01234567 */ KEY_0, KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7,
-        /*38 89:;<=>? */ KEY_8, KEY_9, KEY_SEMICOLON|USHIFT, KEY_SEMICOLON, KEY_COMMA|USHIFT, KEY_EQUAL, KEY_DOT|USHIFT, KEY_SLASH|USHIFT,
-        /*40 @ABCDEFG */ KEY_2|USHIFT, KEY_A|USHIFT, KEY_B|USHIFT, KEY_C|USHIFT, KEY_D|USHIFT, KEY_E|USHIFT, KEY_F|USHIFT, KEY_G|USHIFT,
-        /*48 HIJKLMNO */ KEY_H|USHIFT, KEY_I|USHIFT, KEY_J|USHIFT, KEY_K|USHIFT, KEY_L|USHIFT, KEY_M|USHIFT, KEY_N|USHIFT, KEY_O|USHIFT,
-        /*50 PQRSTUVW */ KEY_P|USHIFT, KEY_Q|USHIFT, KEY_R|USHIFT, KEY_S|USHIFT, KEY_T|USHIFT, KEY_U|USHIFT, KEY_V|USHIFT, KEY_W|USHIFT,
-        /*58 XYZ[\]^_ */ KEY_X|USHIFT, KEY_Y|USHIFT, KEY_Z|USHIFT, KEY_LEFTBRACE, KEY_BACKSLASH, KEY_RIGHTBRACE, KEY_6|USHIFT, KEY_MINUS|USHIFT,
-        /*60 `abcdefg */ KEY_GRAVE, KEY_A, KEY_B, KEY_C, KEY_D, KEY_E, KEY_F, KEY_G,
-        /*68 hijklmno */ KEY_H, KEY_I, KEY_J, KEY_K, KEY_L, KEY_M, KEY_N, KEY_O,
-        /*70 pqrstuvw */ KEY_P, KEY_Q, KEY_R, KEY_S, KEY_T, KEY_U, KEY_V, KEY_W,
-        /*78 xyz{|}~  */ KEY_X, KEY_Y, KEY_Z, KEY_LEFTBRACE|USHIFT, KEY_BACKSLASH|USHIFT, KEY_RIGHTBRACE|USHIFT, KEY_GRAVE|USHIFT, KEY_BACKSPACE
-    };
-
-    /* verify alignment of array                                   */
-    /* just a spot check to make sure everything lines up properly */
-    assert(keycode[' ']==(KEY_SPACE));
-    assert(keycode['A']==(KEY_A|USHIFT));
-    assert(keycode['a']==(KEY_A));
-    assert(keycode['~']==(KEY_GRAVE|USHIFT));
-    /* should be 128 entries in array */
-    assert((sizeof(keycode)/sizeof(keycode[0]))==128);
-
     /* parse key, grabbing SHIFT & CTRL requirements */
-    int need_shift=keycode[val1]&USHIFT;
-    int need_ctrl=keycode[val1]&UCTRL;
-    int key=keycode[val1]&(0xfff);
+    int need_shift=keycode[any_key]&USHIFT;
+    int need_ctrl=keycode[any_key]&UCTRL;
+    int key=keycode[any_key]&(0xfff);
 
     /* if modifier needed, hold it down */
     if (need_ctrl) {
@@ -224,6 +214,20 @@ static void sendchar(int val1)
     }
     if (need_ctrl) {
         send_event(EV_KEY, KEY_LEFTCTRL, 0);
+    }
+    /* did we send a carriage return? (or linefeed?) */
+    if ((any_key==10)||(any_key==13)) {
+        /* rdelay overrides cdelay if present */
+        if (rdelay>0) {
+            usleep(rdelay*1000);
+        } else if (cdelay>0) {
+            usleep(cdelay*1000);
+        }
+    } else {
+        /* any other character, delay if specified */
+        if (cdelay>0) {
+            usleep(cdelay*1000);
+        }
     }
 }
 
@@ -512,6 +516,15 @@ static void usage(char* arg0)
 
 int main(int argc, char* argv[])
 {
+    /* verify alignment of keycode array                           */
+    /* just a spot check to make sure everything lines up properly */
+    assert(keycode[' ']==(KEY_SPACE));
+    assert(keycode['A']==(KEY_A|USHIFT));
+    assert(keycode['a']==(KEY_A));
+    assert(keycode['~']==(KEY_GRAVE|USHIFT));
+    /* should be 128 entries in array */
+    assert((sizeof(keycode)/sizeof(keycode[0]))==128);
+
     /* short options */
     char* optstring="hvVr:c:f:s:Se:C";
 
