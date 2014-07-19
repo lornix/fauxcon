@@ -580,9 +580,14 @@ int main(int argc, char* argv[])
                 verbose_mode+=1;
                 break;
             case 'r': /* delay for RETURN's */
-                rdelay=atoi(optarg);
+                if ((optarg[0]=='d')&&(optarg[1]=='e')) {
+                    error(EXIT_FAILURE,0,"Single dash on long option --rdelay\n");
+                    /* no return */
+                }
+                errno=0;
+                rdelay=strtol(optarg,NULL,0);
                 /* check value, zero, negative or > MAX_DELAY ms is not allowed */
-                if ((rdelay<1)||(rdelay>MAX_DELAY)) {
+                if ((errno!=0)||(rdelay<1)||(rdelay>MAX_DELAY)) {
                     /* do we want to fail early? or do something unexpected
                      * by the user? Let's fail for now */
                     error(EXIT_FAILURE,0,"<RETURN> delay (-r|--rdelay) out of bounds (1->%dms) at %d\n",MAX_DELAY,rdelay);
@@ -590,9 +595,14 @@ int main(int argc, char* argv[])
                 }
                 break;
             case 'c': /* delay for every character */
-                cdelay=atoi(optarg);
+                if ((optarg[0]=='d')&&(optarg[1]=='e')) {
+                    error(EXIT_FAILURE,0,"Single dash on long option --cdelay\n");
+                    /* no return */
+                }
+                errno=0;
+                cdelay=strtol(optarg,NULL,0);
                 /* check value, zero, negative or > MAX_DELAY ms is not allowed */
-                if ((cdelay<1)||(cdelay>MAX_DELAY)) {
+                if ((errno!=0)||(cdelay<1)||(cdelay>MAX_DELAY)) {
                     /* Same as above, fail early, don't confuse user */
                     error(EXIT_FAILURE,0,"Char delay (-c|--cdelay) out of bounds (1->%dms) at %d\n",MAX_DELAY,cdelay);
                     /* no return */
