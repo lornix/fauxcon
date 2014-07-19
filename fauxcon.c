@@ -47,8 +47,6 @@
 #include <sys/ioctl.h>
 #include <sys/select.h>
 #include <getopt.h>
-extern char* optarg;
-extern int optind, opterr, optopt;
 
 /* #include <linux/input.h>                               */
 /* not needed, since <linux/uinput.h> includes it already */
@@ -80,6 +78,9 @@ static const int MAX_DELAY=2000;
 
 /* escape_char - what character is the escape char? Can't leave without it! */
 static char escape_char=ESCAPE_CHAR_DEFAULT;
+static int verbose_mode=0;
+static int rdelay=0;
+static int cdelay=0;
 
 /* file descriptor to write to uinput device */
 static int ufile=0;
@@ -285,7 +286,7 @@ static void destroy_uinput(void)
     ufile=-1;
 }
 
-static void run(void)
+static void connect_user(void)
 {
     /* set up uinput device */
     create_uinput();
@@ -348,97 +349,6 @@ static void run(void)
     destroy_uinput();
 }
 
-/* create proper getopt_long parameters from poptions struct */
-/* handles only short-name, only long-name or both type entries */
-static void build_opts_objects(
-        const progoptions* poptions,
-        char** optstring,
-        struct option** longopt)
-{
-    /* which poptions value are we parsing? */
-    int index=0;
-    /* which longoption index are we filling? */
-    int longindex=0;
-    /* string we're building */
-    char* ostr=NULL;
-    /* and length */
-    int len=0;
-
-    /* while we aren't at the all-zeros last entry */
-    while ((poptions[index].shortchar!=0)||(poptions[index].longname!=0)) {
-
-        /* if entry has a short name value */
-        if (poptions[index].shortchar!=0) {
-
-            /* resize the string to add new characters */
-            ostr=realloc(ostr,len+4);
-            /* force a zero terminator */
-            ostr[len]=0;
-            /* add dummy string to end */
-            strncat(ostr,"X::",len+4);
-            /* fill in proper value */
-            ostr[len]=poptions[index].shortchar&(~REQ);
-            /* update length */
-            len+=1+poptions[index].has_arg;
-            /* and make sure it's zero terminated */
-            ostr[len]=0;
-        }
-
-         /* if entry has a long name value */
-        if (poptions[index].longname!=0) {
-             /* resize the option array and fill in new entry */
-            *longopt=realloc(*longopt,sizeof(struct option*)*(longindex+1));
-            longopt[longindex]=calloc(1,sizeof(struct option));
-
-            longopt[longindex]->name=poptions[index].longname;
-            longopt[longindex]->has_arg=poptions[index].has_arg;
-            longopt[longindex]->val=poptions[index].shortchar&(~REQ);
-            longopt[longindex]->flag=0;
-
-            longindex++;
-        }
-
-        index++;
-    }
-
-    /* add the zero filled entry at end of longoption array */
-    *longopt=realloc(*longopt,sizeof(struct option*)*(longindex+1));
-    longopt[longindex]=calloc(1,sizeof(struct option));
-
-    int i=0;
-    for (i=0; longopt[i]->name!=0; i++) {
-        printf("boo: longopt[%2d] = %2d %8p %c %s\n", i, longopt[i]->has_arg, longopt[i]->flag, longopt[i]->val, longopt[i]->name);
-    }
-    printf("boo: longopt[%2d] = %2d %8p %c %s\n", i, longopt[i]->has_arg, longopt[i]->flag, longopt[i]->val, longopt[i]->name);
-
-    /* return value to caller */
-    *optstring=ostr;
-}
-
-static void free_mem(char** optstring, struct option** longopt)
-{
-    /* for each longoption entry, run free! */
-    if (*longopt!=NULL) {
-        int longindex=0;
-        while ((longopt[longindex]!=NULL)&&(longopt[longindex]->name!=0)) {
-            printf("free_mem: longopt[%d]->name = %s\n",longindex,longopt[longindex]->name);
-            free(longopt[longindex]);
-            longindex++;
-        }
-
-        /* drop the last all-zeros entry */
-        if (longopt[longindex]!=NULL) {
-            free(longopt[longindex]);
-        }
-        /* and then the whole array thingy */
-        free(*longopt);
-    }
-    /* and the option string */
-    if (*optstring!=NULL) {
-        free(*optstring);
-    }
-}
-
 static const char* showopt(int shortchar, const char* longname)
 {
     /* sigh.  Of course, someone will create a longname option over 80 chars
@@ -493,13 +403,33 @@ static const char* showarg(int has_arg)
     return str;
 }
 
-static void usage(char* arg0, progoptions poptions[])
+static void usage(char* arg0)
 {
 
-    printf("usage displayed here\n");
-    exit(EXIT_FAILURE);
-
     printf("\n");
+
+    progoptions poptions[]=
+    {
+        /* short,   long,      has_arg, description */
+        {  'h',     "help",    0,       "Show Help" },
+        {  'v',     "verbose", 0,       "Verbose operation" },
+        {  'V',     "version", 0,       "Show version information" },
+        {  'r',     "rdelay",  1,       "Delay arg (ms) after every <RETURN> character" },
+        {  'c',     "cdelay",  1,       "Delay arg (ms) after every character" },
+        {  'f',     "file",    1,       "Send contents of file 'arg' (and exit)" },
+        {  's',     "string",  1,       "Send string 'arg' (and exit)" },
+        {  'S',     "stay",    0,       "Stay connected after sending file or string" },
+        {  'e',     "escape",  1,       "Specify Escape Character - Default (" Q(ESCAPE_CHAR_DEFAULT) ")" },
+        {  'C'|REQ, "connect", 0,       "Connect to CONSOLE keyboard & mouse (REQUIRED)" },
+        {   0,0,0, /* compiler will concatenate these all together */
+            "Connect your keyboard to system's CONSOLE KB & Mouse.\n\n"
+                "The required '-C/--connect' option is to prevent users from getting locked in\n"
+                "without knowing how to exit.  You must always include this option to connect.\n\n"
+                "To exit once running, you'll need to type the escape sequence (much like ssh(1)),\n"
+                "by entering '<RETURN> % .', that is, the RETURN key, whatever your escape\n"
+                "character is (default is " Q(ESCAPE_CHAR_DEFAULT) "), and then a period ('.').\n"
+        },
+    };
 
     int line_len=printf("%s",arg0);
 
@@ -529,8 +459,8 @@ static void usage(char* arg0, progoptions poptions[])
             len=printf("%s",showarg(poptions[index].has_arg));
             line_len+=len;
             opt_len+=len;
+            line_len+=printf(" ");
         }
-        line_len+=printf(" ");
 
         if ((poptions[index].shortchar&REQ)==0) {
             line_len+=printf("]");
@@ -582,39 +512,11 @@ static void usage(char* arg0, progoptions poptions[])
 
 int main(int argc, char* argv[])
 {
-    progoptions poptions[]=
-    {
-        /* short,   long,      has_arg, description */
-        {  '@',     "@@@@",    0,       "Gibberish filler" },
-        {   0 ,     "@@@@",    0,       "Gibberish filler" },
-        {  '@',      NULL,     0,       "Gibberish filler" },
-        {  'h',     "help",    0,       "Show Help" },
-        {  'v',     "verbose", 0,       "Verbose operation" },
-        {  'V',     "version", 0,       "Show version information" },
-        {  'r',     "rdelay",  1,       "Delay arg (ms) after every <RETURN> character" },
-        {  'c',     "cdelay",  1,       "Delay arg (ms) after every character" },
-        {  'f',     "file",    1,       "Send contents of file 'arg' (and exit)" },
-        {  's',     "string",  1,       "Send string 'arg' (and exit)" },
-        {  'S',     "stay",    0,       "Stay connected after sending file or string" },
-        {  'e',     "escape",  1,       "Specify Escape Character - Default (" Q(ESCAPE_CHAR_DEFAULT) ")" },
-        {  'C'|REQ, "connect", 0,       "Connect to CONSOLE keyboard & mouse (REQUIRED)" },
-        {   0,0,0, /* compiler will concatenate these all together */
-            "Connect your keyboard to system's CONSOLE KB & Mouse.\n\n"
-                "The required '-c/--connect' option is to prevent users from getting locked in\n"
-                "without knowing how to exit.  You must always include this option to connect.\n\n"
-                "To exit once running, you'll need to type the escape sequence (much like ssh(1)),\n"
-                "by entering '<RETURN> % .', that is, the RETURN key, whatever your escape\n"
-                "character is (default is " Q(ESCAPE_CHAR_DEFAULT) "), and then a period ('.').\n"
-        },
-    };
+    /* short options */
+    char* optstring="hvVr:c:f:s:Se:C";
 
-    /* to be filled in */
-    struct option* longopt=NULL;
-    char* optstring=NULL;
-
-    struct option lo[]={
-        { "@@@@",    0, 0, '@' },
-        { "@@@@",    0, 0, '@' },
+    /* long options */
+    struct option longopt[]={
         { "help",    0, 0, 'h' },
         { "verbose", 0, 0, 'v' },
         { "version", 0, 0, 'V' },
@@ -628,37 +530,22 @@ int main(int argc, char* argv[])
         { 0,         0, 0, 0   },
     };
 
-
-    /* create proper optstring & longopt from single poptions array */
-    build_opts_objects(poptions,&optstring,&longopt);
-
-    /*
-     * int i=0;
-     * for (i=0; lo[i].name!=0; i++) {
-     *     printf("main: longopt[%2d] = %p %2d %6p %c %10s\t", i, &longopt[i], longopt[i].has_arg, longopt[i].flag, longopt[i].val, longopt[i].name);
-     *     printf("lo[%2d] = %p %2d %6p %c %10s\n", i, &lo[i], lo[i].has_arg, lo[i].flag, lo[i].val, lo[i].name);
-     * }
-     * printf("main: longopt[%2d] = %p %2d %6p %c %10s\t", i, &longopt[i], longopt[i].has_arg, longopt[i].flag, longopt[i].val, longopt[i].name);
-     * printf("lo[%2d] = %p %2d %6p %c %10s\n", i, &lo[i], lo[i].has_arg, lo[i].flag, lo[i].val, lo[i].name);
-     */
-
     /* fetch basename of argv[0] */
     char* arg0=basename(argv[0]);
 
     /* preset the defaults for the various flags & settings */
-    int verbose_mode=0;
-    int rdelay=0;
-    int cdelay=0;
+    /* globals */
+    verbose_mode=0;
+    rdelay=0;
+    cdelay=0;
+    /* locals */
     char* filename=NULL;
     char* sendstr=NULL;
     int stay_connected=0;
     int connect=0;
-    int escape=ESCAPE_CHAR_DEFAULT;
-    int fileindex=0;
-    int strindex=0;
 
     /* prevent getopt_long from printing error messages */
-    /* opterr=0; */
+    opterr=0;
 
     /* start from beginning */
     optind=1;
@@ -670,15 +557,14 @@ int main(int argc, char* argv[])
             /* exit while loop */
             break;
         }
-        printf("Option: %c\n",opt);
         switch (opt) {
             case 'V': /* version */
                 printf(VERSION_STRING);
                 exit(EXIT_SUCCESS);
                 /* doesn't return */
                 break;
-            case 'v': /* verbose */
-                verbose_mode=1;
+            case 'v': /* verbose - multiple means more */
+                verbose_mode+=1;
                 break;
             case 'r': /* delay for RETURN's */
                 rdelay=atoi(optarg);
@@ -702,22 +588,18 @@ int main(int argc, char* argv[])
             case 'f': /* send file */
                 /* save pointer to filename in argv[] array */
                 filename=optarg;
-                /* save which came first, file or string send */
-                fileindex=optind;
                 break;
             case 's': /* send string */
                 sendstr=optarg;
-                /* save which came first, file or string send */
-                strindex=optind;
                 break;
             case 'S': /* stay connected after file/string send */
                 stay_connected=1;
                 break;
             case 'e': /* specify escape char, disallow '~' */
-                escape=optarg[0];
-                if ((escape<' ')||(escape>='~')) {
+                escape_char=optarg[0];
+                if ((escape_char<' ')||(escape_char>='~')) {
                     fprintf(stderr,"Escape character invalid\n");
-                    if (escape=='~') {
+                    if (escape_char=='~') {
                         fprintf(stderr,"I can't allow you to use '~',\n"
                                 "\tyou'll hurt yourself if you're ssh'd into a system\n");
                     }
@@ -730,7 +612,7 @@ int main(int argc, char* argv[])
                 break;
             case 'h': /* help */
             default:  /* or anything weird */
-                usage(arg0,poptions);
+                usage(arg0);
                 /* doesn't return */
                 break;
         }
@@ -741,8 +623,8 @@ int main(int argc, char* argv[])
     /* satisfy request for verboseness */
     if (verbose_mode!=0) {
         printf(VERSION_STRING);
-        if (escape!=ESCAPE_CHAR_DEFAULT) {
-            printf("Setting escape character to '%c'\n",escape);
+        if (escape_char!=ESCAPE_CHAR_DEFAULT) {
+            printf("Setting escape character to '%c'\n",escape_char);
         }
         if (rdelay>0) {
             printf("Setting <RETURN> delay to %d ms\n",rdelay);
@@ -751,37 +633,30 @@ int main(int argc, char* argv[])
             printf("Setting Character delay to %d ms\n",cdelay);
         }
         if (stay_connected!=0) {
-            if ((fileindex==0)&&(strindex==0)) {
+            if ((filename==NULL)&&(sendstr==NULL)) {
                 /* nothing to be sent, ignore stay_connected */
                 stay_connected=0;
             } else {
                 printf("Will stay connected after sending ");
-                if ((fileindex>0)&&(strindex==0)) {
+                if (filename!=NULL) {
                     printf("file");
-                } else if ((fileindex==0)&&(strindex>0)) {
+                }
+                if ((filename!=NULL)&&(sendstr!=NULL)) {
+                    printf(" and ");
+                }
+                if (sendstr!=NULL) {
                     printf("string");
-                } else if (fileindex<strindex) {
-                    printf("file then string");
-                } else {
-                    printf("string then file");
                 }
                 printf(".\n");
             }
         }
-        if ((fileindex>0)&&(strindex==0)) {
+        if (filename!=NULL) {
             printf("Sending file: %s\n",filename);
-        } else if ((fileindex==0)&&(strindex>0)) {
+        }
+        if (sendstr!=NULL) {
             printf("Sending string: '%s'\n",sendstr);
-        } else if (fileindex<strindex) {
-            printf("Sending file: %s\n",filename);
-            printf("Sending string: '%s'\n",sendstr);
-        } else if ((fileindex>0)&&(strindex>0)) {
-            printf("Sending string: '%s'\n",sendstr);
-            printf("Sending file: '%s'\n",filename);
         }
     }
-
-    free_mem(&optstring,&longopt);
 
     if (connect==0) {
         fprintf(stderr,"\nConnect option not specified, preventing accidental invocation and\n"
@@ -791,7 +666,7 @@ int main(int argc, char* argv[])
     }
 
     printf("Reminder: Escape sequence is '<CR> %c .'\n",escape_char);
-    run();
+    connect_user();
 
     return EXIT_SUCCESS;
 }
