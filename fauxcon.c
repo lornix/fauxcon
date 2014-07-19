@@ -350,6 +350,9 @@ static void connect_string(char* sendstr)
 {
     while (*sendstr) {
         sendchar(*sendstr);
+        if (verbose_mode>1) {
+            putchar(*sendstr);
+        }
         sendstr++;
     }
 }
@@ -359,20 +362,23 @@ static void connect_file(char* filename)
 
 #define FILE_BUFFER_SIZE 1024
 
-    char buffer[FILE_BUFFER_SIZE+1];
+    char buffer[FILE_BUFFER_SIZE];
 
     FILE* fp=fopen(filename,"r");
 
     while (1) {
-        int num_read=fread(buffer,FILE_BUFFER_SIZE,1,fp);
+        int num_read=fread(buffer,1,FILE_BUFFER_SIZE,fp);
         /* input all gone! */
-        if (num_read==0) {
+        if (num_read<1) {
             break;
         }
 
         char* ptr=buffer;
         while (num_read) {
             sendchar(*ptr);
+            if (verbose_mode>1) {
+                putchar(*ptr);
+            }
             ptr++;
             num_read--;
         }
@@ -444,7 +450,7 @@ static void usage(char* arg0)
     {
         /* short,   long,      has_arg, description */
         {  'h',     "help",    0,       "Show Help" },
-        {  'v',     "verbose", 0,       "Verbose operation" },
+        {  'v',     "verbose", 0,       "Verbose operation (multiple means more)" },
         {  'V',     "version", 0,       "Show version information" },
         {  'r',     "rdelay",  1,       "Delay arg (ms) after every <RETURN> character" },
         {  'c',     "cdelay",  1,       "Delay arg (ms) after every character" },
@@ -460,7 +466,9 @@ static void usage(char* arg0)
                 "without knowing how to exit.  You must always include this option to connect.\n\n"
                 "To exit once running, you'll need to type the escape sequence (much like ssh(1)),\n"
                 "by entering '<RETURN> % .', that is, the RETURN key, whatever your escape\n"
-                "character is (default is " Q(ESCAPE_CHAR_DEFAULT) "), and then a period ('.').\n"
+                "character is (default is " Q(ESCAPE_CHAR_DEFAULT) "), and then a period ('.').\n\n"
+                "Multiple -v increases verbosity, -v shows info messages on stderr, -vv echos\n"
+                "files and strings to stdout as well.\n"
         },
     };
 
@@ -669,7 +677,7 @@ int main(int argc, char* argv[])
             case 'e': /* specify escape char, disallow '~' */
                 escape_char=optarg[0];
                 if ((escape_char<' ')||(escape_char>='~')) {
-                    fprintf(stderr,"Escape character invalid\n");
+                    fprintf(stderr,"Escape character ('%c') invalid\n",escape_char);
                     if (escape_char=='~') {
                         fprintf(stderr,"I can't allow you to use '~',\n"
                                 "\tyou'll hurt yourself if you're ssh'd into a system\n");
@@ -691,20 +699,20 @@ int main(int argc, char* argv[])
 
     /* satisfy request for verboseness */
     if (verbose_mode) {
-        printf(VERSION_STRING);
+        fprintf(stderr,VERSION_STRING);
         if (escape_char!=ESCAPE_CHAR_DEFAULT) {
-            printf("Setting escape character to '%c'\n",escape_char);
+            fprintf(stderr,"Setting escape character to '%c'\n",escape_char);
         }
         if (rdelay>0) {
-            printf("Setting <RETURN> delay to %d ms\n",rdelay);
+            fprintf(stderr,"Setting <RETURN> delay to %d ms\n",rdelay);
         }
         if (cdelay>0) {
-            printf("Setting Character delay to %d ms\n",cdelay);
+            fprintf(stderr,"Setting Character delay to %d ms\n",cdelay);
         }
         /* nothing to be sent? reset keep_connection */
         keep_connection=keep_connection&sending;
         if (keep_connection) {
-            printf("Will keep connection open after sending files or strings.\n");
+            fprintf(stderr,"Will keep connection open after sending files or strings.\n");
 
         }
     }
@@ -741,6 +749,9 @@ int main(int argc, char* argv[])
                 /* append CR? */
                 if (opt=='S') {
                     sendchar(13);
+                    if (verbose_mode>1) {
+                        putchar(13);
+                    }
                 }
                 break;
             default: /* we're ignoring everything else */
