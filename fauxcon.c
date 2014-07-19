@@ -23,7 +23,7 @@
  */
 
 #ifndef VERSION
-#define VERSION "0.0.1"
+#define VERSION "--dev--"
 #endif
 
 #define AUTHOR "L Nix <lornix@lornix.com>"
@@ -68,7 +68,7 @@
 #define REQ 0x100
 
 /* version string shown in multiple places. (consistency!) */
-#define VERSION_STRING "%s v" VERSION " - " AUTHOR "\n",arg0
+#define VERSION_STRING "%s " VERSION " - " AUTHOR "\n",arg0
 
 /* arbitrary line length limit, prevents wrap on typical display */
 static const int MAX_LINE_LENGTH=70;
@@ -405,7 +405,6 @@ static const char* showarg(int has_arg)
 
 static void usage(char* arg0)
 {
-
     printf("\n");
 
     progoptions poptions[]=
@@ -507,6 +506,7 @@ static void usage(char* arg0)
         index++;
     }
     printf("\n");
+    printf(VERSION_STRING);
     exit(EXIT_FAILURE);
 }
 

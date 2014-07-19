@@ -25,6 +25,10 @@ CFLAGS+=-Wall -Wextra -Wunused
 # sometimes we want to see it all
 #CFLAGS+=-save-temps -fverbose-asm
 #
+# build VERSION string
+VERSION:=$(shell git describe --tags --long)
+CFLAGS+=-D'VERSION="$(VERSION)"'
+#
 # don't really use LDFLAGS much
 #LDFLAGS+=-rdynamic
 #
@@ -46,7 +50,7 @@ all: $(EXEC)
 $(EXEC): $(SRC)
 	$(CC) $(CSTDCFLAGS) $(CFLAGS) $(EXTFLAGS) $(LDFLAGS) -c $< -o $@.o $(LIBS)
 	$(CC) $(CSTDCFLAGS) $(CFLAGS) $(EXTFLAGS) $(LDFLAGS) $@.o -o $@ $(LIBS)
-	# perhaps enable later
+	# uncomment for setuid mode
 	#sudo chown root:root $(EXEC)
 	#sudo chmod 4755 $(EXEC)
 
