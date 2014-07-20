@@ -77,13 +77,13 @@
 static const int MAX_LINE_LENGTH=70;
 
 /* Maximum rdelay/cdelay value, in milliseconds */
-static const int MAX_DELAY=2000;
+static const unsigned int MAX_DELAY=2000;
 
 /* escape_char - what character is the escape char? Can't leave without it! */
 static char escape_char=ESCAPE_CHAR_DEFAULT;
 static int verbose_mode=0;
-static int rdelay=0;
-static int cdelay=0;
+static unsigned int rdelay=0;
+static unsigned int cdelay=0;
 
 /* file descriptor to write to uinput device */
 static int ufile=0;
@@ -152,8 +152,8 @@ static void set_keyboard(kbd_mode kmode)
         /* reset tty attributes */
         struct termios tty_attr;
         memcpy(&tty_attr, &tty_attr_saved, sizeof(tty_attr));
-        tty_attr.c_lflag&=~(ICANON|ECHO|ISIG);
-        tty_attr.c_iflag&=~(ISTRIP|INLCR|ICRNL|IGNCR|IXON|IXOFF);
+        tty_attr.c_lflag&=(unsigned int)(~(ICANON|ECHO|ISIG));
+        tty_attr.c_iflag&=(unsigned int)(~(ISTRIP|INLCR|ICRNL|IGNCR|IXON|IXOFF));
         tcsetattr(0, TCSANOW, &tty_attr);
 
         /* set keyboard to raw mode */
@@ -162,7 +162,7 @@ static void set_keyboard(kbd_mode kmode)
 }
 
 /* send an event to uinput */
-static void send_event(int type, int code, int value)
+static void send_event(unsigned short type, unsigned short code, unsigned short value)
 {
     /* build structure and populate */
     struct input_event event;
@@ -195,7 +195,7 @@ static void sendchar(int any_key)
     /* parse key, grabbing SHIFT & CTRL requirements */
     int need_shift=keycode[any_key]&USHIFT;
     int need_ctrl=keycode[any_key]&UCTRL;
-    int key=keycode[any_key]&(0xfff);
+    unsigned short key=keycode[any_key]&(0xfff);
 
     /* if modifier needed, hold it down */
     if (need_ctrl) {
@@ -235,7 +235,7 @@ static void sendchar(int any_key)
 }
 
 /* perform initial setup to create uinput device */
-static void create_uinput()
+static void create_uinput(void)
 {
     /* Attempt to open uinput to create new device */
     ufile = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
@@ -371,7 +371,7 @@ static void connect_file(char* filename)
     FILE* fp=fopen(filename,"r");
 
     while (1) {
-        int num_read=fread(buffer,1,FILE_BUFFER_SIZE,fp);
+        size_t num_read=fread(buffer,1,FILE_BUFFER_SIZE,fp);
         /* input all gone! */
         if (num_read<1) {
             break;
@@ -407,7 +407,7 @@ static const char* showopt(int shortchar, const char* longname)
         /* fake it */
         strncat(str,"-x",SHOWOPTSTRLEN);
         /* and poke in proper value */
-        str[strlen(str)-1]=shortchar&(~REQ);
+        str[strlen(str)-1]=(char)(shortchar&(~REQ));
     }
     if ((shortchar)&&(longname)) {
         strncat(str,"|",SHOWOPTSTRLEN);
@@ -517,7 +517,7 @@ static void usage(char* arg0)
         /* arbitrary line length limit, prevents wrap on typical display */
         if (line_len>=MAX_LINE_LENGTH) {
             /* retrieve length of arg0 */
-            line_len=strlen(arg0);
+            line_len=(int)strlen(arg0);
             /* pad out to that length */
             printf("\n%*s",line_len,"");
         }
@@ -581,7 +581,7 @@ int main(int argc, char* argv[])
     assert((sizeof(keycode)/sizeof(keycode[0]))==128);
 
     /* short options */
-    char* optstring="hvVr:c:f:s:S:ke:C";
+    const char* optstring="hvVr:c:f:s:S:ke:C";
 
     /* long options */
     struct option longopt[]={
@@ -649,7 +649,7 @@ int main(int argc, char* argv[])
                     /* no return */
                 }
                 errno=0;
-                int delay=strtol(optarg,NULL,0);
+                unsigned int delay=(unsigned int)strtol(optarg,NULL,0);
                 /* check value, zero, negative or > MAX_DELAY ms is not allowed */
                 if ((errno)||(delay<1)||(delay>MAX_DELAY)) {
                     /* do we want to fail early? or do something unexpected
