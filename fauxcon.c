@@ -29,8 +29,6 @@
 #define VERSION "--dev--"
 #endif
 
-#define AUTHOR "L Nix <lornix@lornix.com>"
-
 #define _BSD_SOURCE
 #define _GNU_SOURCE
 
@@ -60,30 +58,23 @@
 /* pass around. Could put in a structure, but we'd still need to pass it. */
 /* No win either way.  Globals makes things cleaner at least.             */
 
-/* what is the default escape character? */
-#define ESCAPE_CHAR_DEFAULT '%'
-
-/* create stringified version of macro*/
-#define Q(x) QQ(x)
-#define QQ(x) #x
+/* The creator! V'GER! */
+static const char* AUTHOR="L Nix <lornix@lornix.com>";
 
 /* REQ - denotes a non-optional argument in option list */
-#define REQ 0x100
-
-/* version string shown in multiple places. (consistency!) */
-#define VERSION_STRING "%s " VERSION " - " AUTHOR "\n",arg0
+static const int REQ=0x100;
 
 /* arbitrary line length limit, prevents wrap on typical display */
 static const int MAX_LINE_LENGTH=70;
 
 /* Maximum rdelay/cdelay value, in milliseconds */
-static const unsigned int MAX_DELAY=2000;
+static const int MAX_DELAY=2000;
 
 /* escape_char - what character is the escape char? Can't leave without it! */
-static char escape_char=ESCAPE_CHAR_DEFAULT;
+static const char escape_char_default='%';
 static int verbose_mode=0;
-static unsigned int rdelay=0;
-static unsigned int cdelay=0;
+static int rdelay=-1;
+static int cdelay=-1;
 
 /* file descriptor to write to uinput device */
 static int ufile=0;
@@ -100,28 +91,29 @@ typedef struct {
 } progoptions;
 
 /* need to press SHIFT for this key */
-#define USHIFT 0x1000
+#define US 0x1000
 /* need to press CTRL for this key */
-#define UCTRL  0x2000
-/* 1:1 lookup table.  128 entries, ASC('A')=65=KEY_A|USHIFT */
+#define UC 0x2000
+
+/* 1:1 lookup table.  128 entries, ASC('A')=65=KEY_A|US */
 static const short keycode[]=
 {
-    /*00 @ABCDEFG */ KEY_2|USHIFT|UCTRL, KEY_A|UCTRL, KEY_B|UCTRL, KEY_C|UCTRL, KEY_D|UCTRL, KEY_E|UCTRL, KEY_F|UCTRL, KEY_G|UCTRL,
-    /*08 HIJKLMNO */ KEY_H|UCTRL, KEY_I|UCTRL, KEY_J|UCTRL, KEY_K|UCTRL, KEY_L|UCTRL, KEY_M|UCTRL, KEY_N|UCTRL, KEY_O|UCTRL,
-    /*10 PQRSTUVW */ KEY_P|UCTRL, KEY_Q|UCTRL, KEY_R|UCTRL, KEY_S|UCTRL, KEY_T|UCTRL, KEY_U|UCTRL, KEY_V|UCTRL, KEY_W|UCTRL,
-    /*18 XYZ..... */ KEY_X|UCTRL, KEY_Y|UCTRL, KEY_Z|UCTRL, KEY_ESC, 0, 0, 0, 0,
-    /*20  !"#$%&' */ KEY_SPACE, KEY_1|USHIFT, KEY_APOSTROPHE|USHIFT, KEY_3|USHIFT, KEY_4|USHIFT, KEY_5|USHIFT, KEY_7|USHIFT, KEY_APOSTROPHE,
-    /*28 ()*+,-./ */ KEY_9|USHIFT, KEY_0|USHIFT, KEY_8|USHIFT, KEY_EQUAL|USHIFT, KEY_COMMA, KEY_MINUS, KEY_DOT, KEY_SLASH,
-    /*30 01234567 */ KEY_0, KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7,
-    /*38 89:;<=>? */ KEY_8, KEY_9, KEY_SEMICOLON|USHIFT, KEY_SEMICOLON, KEY_COMMA|USHIFT, KEY_EQUAL, KEY_DOT|USHIFT, KEY_SLASH|USHIFT,
-    /*40 @ABCDEFG */ KEY_2|USHIFT, KEY_A|USHIFT, KEY_B|USHIFT, KEY_C|USHIFT, KEY_D|USHIFT, KEY_E|USHIFT, KEY_F|USHIFT, KEY_G|USHIFT,
-    /*48 HIJKLMNO */ KEY_H|USHIFT, KEY_I|USHIFT, KEY_J|USHIFT, KEY_K|USHIFT, KEY_L|USHIFT, KEY_M|USHIFT, KEY_N|USHIFT, KEY_O|USHIFT,
-    /*50 PQRSTUVW */ KEY_P|USHIFT, KEY_Q|USHIFT, KEY_R|USHIFT, KEY_S|USHIFT, KEY_T|USHIFT, KEY_U|USHIFT, KEY_V|USHIFT, KEY_W|USHIFT,
-    /*58 XYZ[\]^_ */ KEY_X|USHIFT, KEY_Y|USHIFT, KEY_Z|USHIFT, KEY_LEFTBRACE, KEY_BACKSLASH, KEY_RIGHTBRACE, KEY_6|USHIFT, KEY_MINUS|USHIFT,
-    /*60 `abcdefg */ KEY_GRAVE, KEY_A, KEY_B, KEY_C, KEY_D, KEY_E, KEY_F, KEY_G,
-    /*68 hijklmno */ KEY_H, KEY_I, KEY_J, KEY_K, KEY_L, KEY_M, KEY_N, KEY_O,
-    /*70 pqrstuvw */ KEY_P, KEY_Q, KEY_R, KEY_S, KEY_T, KEY_U, KEY_V, KEY_W,
-    /*78 xyz{|}~  */ KEY_X, KEY_Y, KEY_Z, KEY_LEFTBRACE|USHIFT, KEY_BACKSLASH|USHIFT, KEY_RIGHTBRACE|USHIFT, KEY_GRAVE|USHIFT, KEY_BACKSPACE
+    /*00 @ABCDEFG */ KEY_2|US|UC, KEY_A|UC, KEY_B|UC,          KEY_C|UC,         KEY_D|UC,         KEY_E|UC,          KEY_F|UC,     KEY_G|UC,
+    /*08 HIJKLMNO */ KEY_H|UC,    KEY_I|UC, KEY_J|UC,          KEY_K|UC,         KEY_L|UC,         KEY_M|UC,          KEY_N|UC,     KEY_O|UC,
+    /*10 PQRSTUVW */ KEY_P|UC,    KEY_Q|UC, KEY_R|UC,          KEY_S|UC,         KEY_T|UC,         KEY_U|UC,          KEY_V|UC,     KEY_W|UC,
+    /*18 XYZ..... */ KEY_X|UC,    KEY_Y|UC, KEY_Z|UC,          KEY_ESC,          0,                0,                 0,            0,
+    /*20 .!.#$ &. */ KEY_SPACE,   KEY_1|US, KEY_APOSTROPHE|US, KEY_3|US,         KEY_4|US,         KEY_5|US,          KEY_7|US,     KEY_APOSTROPHE,
+    /*28 ()*+,-./ */ KEY_9|US,    KEY_0|US, KEY_8|US,          KEY_EQUAL|US,     KEY_COMMA,        KEY_MINUS,         KEY_DOT,      KEY_SLASH,
+    /*30 01234567 */ KEY_0,       KEY_1,    KEY_2,             KEY_3,            KEY_4,            KEY_5,             KEY_6,        KEY_7,
+    /*38 89:;<=>? */ KEY_8,       KEY_9,    KEY_SEMICOLON|US,  KEY_SEMICOLON,    KEY_COMMA|US,     KEY_EQUAL,         KEY_DOT|US,   KEY_SLASH|US,
+    /*40 @ABCDEFG */ KEY_2|US,    KEY_A|US, KEY_B|US,          KEY_C|US,         KEY_D|US,         KEY_E|US,          KEY_F|US,     KEY_G|US,
+    /*48 HIJKLMNO */ KEY_H|US,    KEY_I|US, KEY_J|US,          KEY_K|US,         KEY_L|US,         KEY_M|US,          KEY_N|US,     KEY_O|US,
+    /*50 PQRSTUVW */ KEY_P|US,    KEY_Q|US, KEY_R|US,          KEY_S|US,         KEY_T|US,         KEY_U|US,          KEY_V|US,     KEY_W|US,
+    /*58 XYZ[\]^_ */ KEY_X|US,    KEY_Y|US, KEY_Z|US,          KEY_LEFTBRACE,    KEY_BACKSLASH,    KEY_RIGHTBRACE,    KEY_6|US,     KEY_MINUS|US,
+    /*60 `abcdefg */ KEY_GRAVE,   KEY_A,    KEY_B,             KEY_C,            KEY_D,            KEY_E,             KEY_F,        KEY_G,
+    /*68 hijklmno */ KEY_H,       KEY_I,    KEY_J,             KEY_K,            KEY_L,            KEY_M,             KEY_N,        KEY_O,
+    /*70 pqrstuvw */ KEY_P,       KEY_Q,    KEY_R,             KEY_S,            KEY_T,            KEY_U,             KEY_V,        KEY_W,
+    /*78 xyz{|}~. */ KEY_X,       KEY_Y,    KEY_Z,             KEY_LEFTBRACE|US, KEY_BACKSLASH|US, KEY_RIGHTBRACE|US, KEY_GRAVE|US, KEY_BACKSPACE
 };
 
 /* Do processing to set KB to raw or cooked mode. */
@@ -176,14 +168,18 @@ static void send_event(unsigned short type, unsigned short code, unsigned short 
     if (result!=sizeof(event)) {
         error(1, errno, "Error during event write");
     }
+}
 
-    /* send sync event, reusing previous event structure */
+static void send_report_event(void)
+{
+    /* build structure and populate */
+    struct input_event event;
     gettimeofday(&event.time, NULL);
     event.type  = EV_SYN;
     event.code  = SYN_REPORT;
     event.value = 0;
 
-    result=write(ufile, &event, sizeof(event));
+    ssize_t result=write(ufile, &event, sizeof(event));
     if (result!=sizeof(event)) {
         error(1, errno, "Error during event sync");
     }
@@ -193,8 +189,8 @@ static void send_event(unsigned short type, unsigned short code, unsigned short 
 static void sendchar(int any_key)
 {
     /* parse key, grabbing SHIFT & CTRL requirements */
-    int need_shift=keycode[any_key]&USHIFT;
-    int need_ctrl=keycode[any_key]&UCTRL;
+    int need_shift=keycode[any_key]&US;
+    int need_ctrl=keycode[any_key]&UC;
     unsigned short key=keycode[any_key]&(0xfff);
 
     /* if modifier needed, hold it down */
@@ -218,11 +214,15 @@ static void sendchar(int any_key)
     if (need_ctrl) {
         send_event(EV_KEY, KEY_LEFTCTRL, 0);
     }
+    send_report_event();
     /* did we send a carriage return? (or linefeed?) */
     if ((any_key==13)||(any_key==10)) {
         /* rdelay overrides cdelay if present */
-        if (rdelay>0) {
-            usleep(rdelay*1000);
+        if (rdelay>=0) {
+            /* this allows -c 50 -r 0, pause after chars, but no pause on cr's */
+            if (rdelay>0) {
+                usleep(rdelay*1000);
+            }
         } else if (cdelay>0) {
             usleep(cdelay*1000);
         }
@@ -293,7 +293,7 @@ static void destroy_uinput(void)
     ufile=-1;
 }
 
-static void connect_user(void)
+static void connect_user(int escape_char)
 {
     /* set input to nonblocking/raw mode */
     set_keyboard(KBD_MODE_RAW);
@@ -320,14 +320,14 @@ static void connect_user(void)
             FD_SET(0,&readfds);
             continue;
         }
+
         /* supposed to be a character ready */
         int chr=getchar();
+
         /* shouldn't happen... but... */
         if (chr==EOF) {
             continue;
         }
-        /* send typed character to uinput device */
-        sendchar(chr);
 
         /* state machine to handle escape code */
         switch (escape_sequence_state) {
@@ -341,8 +341,17 @@ static void connect_user(void)
                 escape_sequence_state=(chr==13)?1:0;
                 break;
         }
+
         if (escape_sequence_state==3) {
             break;
+        }
+
+        /* send typed character to uinput device */
+        sendchar(chr);
+
+        /* verbose output? (very verbose!) */
+        if (verbose_mode>1) {
+            putchar(chr);
         }
     }
 
@@ -352,6 +361,9 @@ static void connect_user(void)
 
 static void connect_string(char* sendstr)
 {
+    if (verbose_mode>0) {
+        printf("Sending string: %s\n",sendstr);
+    }
     while (*sendstr) {
         sendchar(*sendstr);
         if (verbose_mode>1) {
@@ -364,14 +376,21 @@ static void connect_string(char* sendstr)
 static void connect_file(char* filename)
 {
 
-#define FILE_BUFFER_SIZE 1024
+    char buffer[1024+1];
 
-    char buffer[FILE_BUFFER_SIZE];
+    if (verbose_mode>0) {
+        printf("Sending file: %s\n",filename);
+    }
 
     FILE* fp=fopen(filename,"r");
 
+    if (fp==NULL) {
+        perror("Error opening file for reading");
+        exit(1);
+    }
+
     while (1) {
-        size_t num_read=fread(buffer,1,FILE_BUFFER_SIZE,fp);
+        size_t num_read=fread(buffer,1,1024,fp);
         /* input all gone! */
         if (num_read<1) {
             break;
@@ -397,24 +416,22 @@ static const char* showopt(int shortchar, const char* longname)
     /* sigh.  Of course, someone will create a longname
      * option over 80 chars long... someday...
      */
-#define SHOWOPTSTRLEN 80
-
-    static char str[SHOWOPTSTRLEN+1];
+    static char str[80+1];
     /* always start with empty string */
     str[0]=0;
 
     if (shortchar) {
         /* fake it */
-        strncat(str,"-x",SHOWOPTSTRLEN);
+        strncat(str,"-x",80);
         /* and poke in proper value */
         str[strlen(str)-1]=(char)(shortchar&(~REQ));
     }
     if ((shortchar)&&(longname)) {
-        strncat(str,"|",SHOWOPTSTRLEN);
+        strncat(str,"|",80);
     }
     if (longname) {
-        strncat(str,"--",SHOWOPTSTRLEN);
-        strncat(str,longname,SHOWOPTSTRLEN);
+        strncat(str,"--",80);
+        strncat(str,longname,80);
     }
     /* statically allocated, will be overwritten each call */
     return str;
@@ -423,31 +440,41 @@ static const char* showopt(int shortchar, const char* longname)
 /* build string to show optional-ness of argument: [arg] */
 static const char* showarg(int has_arg)
 {
-#define SHOWARGSTRLEN 6
-
-    static char str[SHOWARGSTRLEN+1]={0};
+    static char str[6+1]={0};
     /* always start with empty string */
     str[0]=0;
 
     if (has_arg>0) {
-        strncat(str," ",SHOWARGSTRLEN);
+        strncat(str," ",6);
 
         /* optional argument? has_arg==2 */
         if (has_arg>1) {
-            strncat(str,"[",SHOWARGSTRLEN);
+            strncat(str,"[",6);
         }
 
-        strncat(str,"arg",SHOWARGSTRLEN);
+        strncat(str,"arg",6);
 
         if (has_arg>1) {
-            strncat(str,"]",SHOWARGSTRLEN);
+            strncat(str,"]",6);
         }
     }
     /* statically allocated, will be overwritten each call */
     return str;
 }
 
-static void usage(char* arg0)
+/* version string shown in multiple places. (consistency!) */
+static const char* version_string(const char* arg0)
+{
+    /* an arbitrarily large space to store string */
+    static char version_str[80+1]={0};
+    if (version_str[0]==0) {
+        int version_str_len=snprintf(version_str,80,"%s %s - %s",arg0,VERSION,AUTHOR);
+        assert(version_str_len<(80+1));
+    }
+    return version_str;
+}
+
+static void usage(const char* arg0)
 {
     /* custom struct to hold short-name/long-name/descriptions of options */
     progoptions poptions[]=
@@ -462,7 +489,7 @@ static void usage(char* arg0)
         {  's',     "string",  1,       "Send string 'arg'" },
         {  'S',     "strcr",   1,       "Send string 'arg' (append CR)" },
         {  'k',     "keep",    0,       "Keep connection after sending file or string" },
-        {  'e',     "escape",  1,       "Specify Escape Character - Default (" Q(ESCAPE_CHAR_DEFAULT) ")" },
+        {  'e',     "escape",  1,       "Specify Escape Character - Default ('%')" },
         {  'C'|REQ, "connect", 0,       "Connect to CONSOLE keyboard & mouse (REQUIRED)" },
         {   0,0,0, /* compiler will concatenate these all together */
             "Connect your keyboard to system's CONSOLE KB & Mouse.\n\n"
@@ -470,7 +497,7 @@ static void usage(char* arg0)
                 "without knowing how to exit.  You must always include this option to connect.\n\n"
                 "To exit once running, you'll need to type the escape sequence (much like ssh(1)),\n"
                 "by entering '<RETURN> % .', that is, the RETURN key, whatever your escape\n"
-                "character is (default is " Q(ESCAPE_CHAR_DEFAULT) "), and then a period ('.').\n\n"
+                "character is (default is '%'), and then a period ('.').\n\n"
                 "Multiple -v increases verbosity, -v shows info messages on stderr, -vv echos\n"
                 "files and strings to stdout as well.\n"
         },
@@ -564,7 +591,7 @@ static void usage(char* arg0)
     }
     printf("\n");
 
-    printf(VERSION_STRING);
+    printf("%s\n",version_string(arg0));
 
     exit(EXIT_FAILURE);
 }
@@ -574,9 +601,9 @@ int main(int argc, char* argv[])
     /* verify alignment of keycode array                           */
     /* just a spot check to make sure everything lines up properly */
     assert(keycode[' ']==(KEY_SPACE));
-    assert(keycode['A']==(KEY_A|USHIFT));
+    assert(keycode['A']==(KEY_A|US));
     assert(keycode['a']==(KEY_A));
-    assert(keycode['~']==(KEY_GRAVE|USHIFT));
+    assert(keycode['~']==(KEY_GRAVE|US));
     /* should be 128 entries in array */
     assert((sizeof(keycode)/sizeof(keycode[0]))==128);
 
@@ -603,11 +630,8 @@ int main(int argc, char* argv[])
     char* arg0=basename(argv[0]);
 
     /* preset the defaults for the various flags & settings */
-    /* globals */
-    verbose_mode=0;
-    rdelay=0;
-    cdelay=0;
     /* locals */
+    int escape_char=escape_char_default;
     int keep_connection=0;
     int connect=0;
     int sending=0;
@@ -632,7 +656,7 @@ int main(int argc, char* argv[])
                 connect=1;
                 break;
             case 'V': /* version */
-                printf(VERSION_STRING);
+                printf("%s\n",version_string(arg0));
                 exit(EXIT_SUCCESS);
                 /* no return */
                 break;
@@ -649,12 +673,12 @@ int main(int argc, char* argv[])
                     /* no return */
                 }
                 errno=0;
-                unsigned int delay=(unsigned int)strtol(optarg,NULL,0);
-                /* check value, zero, negative or > MAX_DELAY ms is not allowed */
-                if ((errno)||(delay<1)||(delay>MAX_DELAY)) {
+                int delay=strtol(optarg,NULL,0);
+                /* check value, negative or > MAX_DELAY ms is not allowed */
+                if ((errno)||(delay<0)||(delay>MAX_DELAY)) {
                     /* do we want to fail early? or do something unexpected
                      * by the user? Let's fail for now */
-                    error(EXIT_FAILURE,errno,"Delay (-%c|--%cdelay) out of bounds (1->%dms) at %d\n",opt,opt,MAX_DELAY,delay);
+                    error(EXIT_FAILURE,errno,"Delay (-%c|--%cdelay) out of bounds (0->%dms) at %d\n",opt,opt,MAX_DELAY,delay);
                     /* no return */
                 }
                 if (opt=='r') {
@@ -703,14 +727,14 @@ int main(int argc, char* argv[])
 
     /* satisfy request for verboseness */
     if (verbose_mode) {
-        fprintf(stderr,VERSION_STRING);
-        if (escape_char!=ESCAPE_CHAR_DEFAULT) {
+        fprintf(stderr,"%s\n",version_string(arg0));
+        if (escape_char!=escape_char_default) {
             fprintf(stderr,"Setting escape character to '%c'\n",escape_char);
         }
-        if (rdelay>0) {
+        if (rdelay>=0) {
             fprintf(stderr,"Setting <RETURN> delay to %d ms\n",rdelay);
         }
-        if (cdelay>0) {
+        if (cdelay>=0) {
             fprintf(stderr,"Setting Character delay to %d ms\n",cdelay);
         }
         /* nothing to be sent? reset keep_connection */
@@ -752,9 +776,9 @@ int main(int argc, char* argv[])
                 connect_string(optarg);
                 /* append CR? */
                 if (opt=='S') {
-                    sendchar(13);
+                    sendchar('\n');
                     if (verbose_mode>1) {
-                        putchar(13);
+                        putchar('\n');
                     }
                 }
                 break;
@@ -765,7 +789,7 @@ int main(int argc, char* argv[])
 
     if (((sending)&&(keep_connection))||(sending==0)) {
         printf("Reminder: Escape sequence is '<CR> %c .'\n",escape_char);
-        connect_user();
+        connect_user(escape_char);
     }
 
     /* remove everything */
