@@ -40,6 +40,9 @@ CC:=gcc
 .SUFFIXES:
 .SUFFIXES: .c .o
 #
+SHELL=/bin/bash -x
+export PS4=\e[32;40m[\e[35;40m$@\e[32;40m]\e[36;40m 
+#
 .phony: all clean
 #
 SRC=fauxcon.c
@@ -48,11 +51,11 @@ EXEC=fauxcon
 all: $(EXEC)
 
 $(EXEC): $(SRC)
-	$(CC) $(CSTDCFLAGS) $(CFLAGS) $(EXTFLAGS) $(LDFLAGS) -c $< -o $@.o $(LIBS)
-	$(CC) $(CSTDCFLAGS) $(CFLAGS) $(EXTFLAGS) $(LDFLAGS) $@.o -o $@ $(LIBS)
-	# uncomment for setuid mode
-	#sudo chown root:root $(EXEC)
-	#sudo chmod 4755 $(EXEC)
+	@$(CC) $(CSTDCFLAGS) $(CFLAGS) $(EXTFLAGS) $(LDFLAGS) -c $< -o $@.o $(LIBS)
+	@$(CC) $(CSTDCFLAGS) $(CFLAGS) $(EXTFLAGS) $(LDFLAGS) $@.o -o $@ $(LIBS)
+	@# uncomment for setuid mode
+	@#sudo chown root:root $(EXEC)
+	@#sudo chmod 4755 $(EXEC)
 
 clean:
-	rm -f *.o $(EXEC)
+	@rm -f *.o $(EXEC)
