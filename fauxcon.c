@@ -304,21 +304,19 @@ static void connect_user(int escape_char)
     /* build fd_set for select */
     fd_set readfds;
     FD_ZERO(&readfds);
-    /* listen for stdin */
-    FD_SET(0,&readfds);
+    struct timeval tval;
 
     while (1) {
-        int sel=select(1,&readfds,NULL,NULL,NULL);
+        /* listen for stdin */
+        FD_SET(0,&readfds);
+        /* reset timeout to 1usec */
+        tval.tv_sec=0;
+        tval.tv_usec=1;
+        int sel=select(1,&readfds,NULL,NULL,&tval);
         if (sel<0) {
             /* something bad happened */
             perror("Error during select");
             break;
-        }
-        if (sel==0) {
-            /* nobody available, try again */
-            /* listen for stdin again, since it was reset */
-            FD_SET(0,&readfds);
-            continue;
         }
 
         /* supposed to be a character ready */
@@ -350,7 +348,15 @@ static void connect_user(int escape_char)
         sendchar(chr);
 
         /* verbose output? (very verbose!) */
-        if (verbose_mode>1) {
+        if (verbose_mode>2) {
+            putchar("0123456789abcdef"[chr/16]);
+            putchar("0123456789abcdef"[chr%16]);
+            if (chr>' ') {
+                putchar(' ');
+                putchar(chr);
+            }
+            putchar('\n');
+        } else if (verbose_mode>1) {
             putchar(chr);
         }
     }
