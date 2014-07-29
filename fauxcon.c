@@ -304,60 +304,64 @@ static void connect_user(int escape_char)
     /* build fd_set for select */
     fd_set readfds;
     FD_ZERO(&readfds);
-    struct timeval tval;
 
     while (1) {
         /* listen for stdin */
         FD_SET(0,&readfds);
-        /* reset timeout to 1usec */
-        tval.tv_sec=0;
-        tval.tv_usec=1;
-        int sel=select(1,&readfds,NULL,NULL,&tval);
+        int sel=select(1,&readfds,NULL,NULL,NULL);
         if (sel<0) {
             /* something bad happened */
             perror("Error during select");
             break;
         }
 
-        /* supposed to be a character ready */
-        int chr=getchar();
+        /* loop to process ALL chars in queue */
+        while (1) {
+            /* supposed to be a character ready */
+            int chr=getchar();
 
-        /* shouldn't happen... but... */
-        if (chr==EOF) {
-            continue;
-        }
-
-        /* state machine to handle escape code */
-        switch (escape_sequence_state) {
-            case 2: /* 2 = looking for period */
-                escape_sequence_state=(chr=='.')?3:0;
+            /* we're out of characters */
+            if (chr==EOF) {
                 break;
-            case 1: /* 1 = looking for escape_char */
-                escape_sequence_state=(chr==escape_char)?2:0;
+            }
+
+            /* state machine to handle escape code */
+            switch (escape_sequence_state) {
+                case 2: /* 2 = looking for period */
+                    escape_sequence_state=(chr=='.')?3:0;
+                    break;
+                case 1: /* 1 = looking for escape_char */
+                    escape_sequence_state=(chr==escape_char)?2:0;
+                    break;
+                default: /* 0 = looking for CR */
+                    escape_sequence_state=(chr==13)?1:0;
+                    break;
+            }
+
+            if (escape_sequence_state==3) {
                 break;
-            default: /* 0 = looking for CR */
-                escape_sequence_state=(chr==13)?1:0;
-                break;
-        }
+            }
 
-        if (escape_sequence_state==3) {
-            break;
-        }
+            /* send typed character to uinput device */
+            sendchar(chr);
 
-        /* send typed character to uinput device */
-        sendchar(chr);
-
-        /* verbose output? (very verbose!) */
-        if (verbose_mode>2) {
-            putchar("0123456789abcdef"[chr/16]);
-            putchar("0123456789abcdef"[chr%16]);
-            if (chr>' ') {
-                putchar(' ');
+            /* verbose output? (very verbose!) */
+            if (verbose_mode>2) {
+                /* -vvv : show hex value of char */
+                putchar("0123456789abcdef"[chr/16]);
+                putchar("0123456789abcdef"[chr%16]);
+                if (chr>' ') {
+                    putchar(' ');
+                    putchar(chr);
+                }
+                putchar('\n');
+            } else if (verbose_mode>1) {
+                /* -vv : echo char locally */
                 putchar(chr);
             }
-            putchar('\n');
-        } else if (verbose_mode>1) {
-            putchar(chr);
+        }
+        if (escape_sequence_state==3) {
+            break;
         }
     }
 
