@@ -31,8 +31,22 @@ Another possibility, set the `setuid` bit on `fauxcon`:
     sudo chown root:root fauxcon
     sudo chmod 4755 fauxcon         # -or- u=rwxs,g=rx,o=rx
 
-You _could_ edit the `udev` rules to allow someone in a particular group to have access, then add
-your user to that group.  (__TODO:__ udev instructions. Perhaps to be added later)
+To run fauxcon as a normal user, `udev` rules to allow users in particular group can be added. Edit _/etc/udev/rules.d/99-uinput.rules_ and insert the following:
+
+    KERNEL=="uinput", GROUP="uinput", MODE:="0660"
+
+Create the _uinput_ group, then add a user (_pi_ in this example) to the group with the following commands:
+
+    sudo groupadd -f uinput
+    sudo gpasswd -a pi uinput
+
+The new group membership take effect in new shell sessions. To make an existing session aware of the new group membership, type `newgrp uinput`.
+
+The new `udev` rule will be active after reboot. To enable the new rule immediately, run these commands:
+
+    sudo udevadm control --reload
+    sudo udevadm trigger --type=devices --sysname-match=uinput
+
 
 By default, to __EXIT__ `fauxcon`, you'll need to type a specific 3 character sequence, since
 we're emulating a full keyboard, you need to be able to type anything and everything.  I've chosen
