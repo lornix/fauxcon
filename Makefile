@@ -59,3 +59,15 @@ $(EXEC): $(SRC)
 
 clean:
 	@rm -f *.o $(EXEC)
+
+# now you will be able to install fauxcon with make install
+PREFIX = /usr/local
+
+.fauxcon: install
+install: fauxcon
+	mkdir -p $(DESTDIR)$(PREFIX)/bin
+	cp $< $(DESTDIR)$(PREFIX)/bin/fauxcon
+
+.fauxcon: uninstall
+uninstall:
+	rm -f $(DESTDIR)$(PREFIX)/bin/fauxcon
